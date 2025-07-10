@@ -1,4 +1,4 @@
-// src/app/(auth)/ventas/nueva/page.tsx
+// src/app/(auth)/ventas/nueva/page.tsx - ACTUALIZADO CON ITEMS
 'use client';
 
 import { useState, useEffect } from 'react';
@@ -10,14 +10,17 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Select } from '@/components/ui/select';
-import { VentaFormData, ventaSchema } from '@/lib/validations/venta';
-import { CurrencyUtils } from '@/lib/utils/calculations';
+import { VentaFormData, ItemVentaFormData, ventaSchema } from '@/lib/validations/venta';
+import { CurrencyUtils, CalculationUtils } from '@/lib/utils/calculations';
 import {
   HiOutlineArrowLeft,
   HiOutlineExclamationCircle,
   HiOutlineDocumentText,
   HiOutlineUsers,
-  HiOutlineCalendar
+  HiOutlineCalendar,
+  HiOutlinePlus,
+  HiOutlineTrash,
+  HiOutlineCalculator
 } from 'react-icons/hi';
 
 export default function NuevaVentaPage() {
@@ -37,28 +40,55 @@ export default function NuevaVentaPage() {
     lugarEntrega: '',
     descuento: 0,
     impuestos: 21,
-    moneda: 'PESOS'
+    moneda: 'PESOS',
+    items: [{
+      descripcion: '',
+      detalle: '',
+      cantidad: 1,
+      unidad: 'unidad',
+      precioUnitario: 0,
+      descuento: 0
+    }]
   });
 
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [selectedPresupuesto, setSelectedPresupuesto] = useState<any>(null);
+  const [ventaDirecta, setVentaDirecta] = useState(true); // Por defecto venta directa
 
-  // Cuando se selecciona un presupuesto, llenar datos automáticamente
+  // Calcular totales basado en items o presupuesto
+  const totales = selectedPresupuesto 
+    ? {
+        subtotal: Number(selectedPresupuesto.subtotal),
+        descuentoTotal: Number(selectedPresupuesto.descuento) || 0,
+        impuestos: Number(selectedPresupuesto.impuestos) || 0,
+        total: Number(selectedPresupuesto.total)
+      }
+    : CalculationUtils.calculateOrderTotals(
+        formData.items || [],
+        formData.descuento,
+        formData.impuestos
+      );
+
+  // Cuando se selecciona un presupuesto
   useEffect(() => {
     if (formData.presupuestoId) {
       const presupuesto = presupuestos.find(p => p.id === formData.presupuestoId);
       if (presupuesto) {
         setSelectedPresupuesto(presupuesto);
+        setVentaDirecta(false);
         setFormData(prev => ({
           ...prev,
           clienteId: presupuesto.cliente.id,
           descripcionObra: presupuesto.descripcionObra || '',
-          moneda: presupuesto.moneda as 'PESOS' | 'DOLARES'
+          moneda: presupuesto.moneda as 'PESOS' | 'DOLARES',
+          descuento: Number(presupuesto.descuento) || 0,
+          impuestos: Number(presupuesto.impuestos) || 0
         }));
       }
     } else {
       setSelectedPresupuesto(null);
+      setVentaDirecta(true);
     }
   }, [formData.presupuestoId, presupuestos]);
 
@@ -68,7 +98,13 @@ export default function NuevaVentaPage() {
     setErrors({});
 
     try {
-      const validatedData = ventaSchema.parse(formData);
+      const dataToSubmit = {
+        ...formData,
+        // Si es venta directa, incluir items. Si es desde presupuesto, no incluir items
+        items: ventaDirecta ? formData.items : undefined
+      };
+
+      const validatedData = ventaSchema.parse(dataToSubmit);
       const newVenta = await createVenta(validatedData);
       router.push(`/ventas/${newVenta.id}`);
     } catch (error: any) {
@@ -93,6 +129,36 @@ export default function NuevaVentaPage() {
     if (errors[field]) {
       setErrors(prev => ({ ...prev, [field]: '' }));
     }
+  };
+
+  const addItem = () => {
+    setFormData(prev => ({
+      ...prev,
+      items: [...(prev.items || []), {
+        descripcion: '',
+        detalle: '',
+        cantidad: 1,
+        unidad: 'unidad',
+        precioUnitario: 0,
+        descuento: 0
+      }]
+    }));
+  };
+
+  const removeItem = (index: number) => {
+    if ((formData.items?.length || 0) > 1) {
+      setFormData(prev => ({
+        ...prev,
+        items: prev.items?.filter((_, i) => i !== index) || []
+      }));
+    }
+  };
+
+  const updateItem = (index: number, field: keyof ItemVentaFormData, value: any) => {
+    setFormData(prev => ({
+      ...prev,
+      items: prev.items?.map((item, i) => i === index ? { ...item, [field]: value } : item) || []
+    }));
   };
 
   return (
@@ -191,6 +257,107 @@ export default function NuevaVentaPage() {
           </CardContent>
         </Card>
 
+        {/* Items de la venta (solo para venta directa) */}
+        {ventaDirecta && (
+          <Card>
+            <CardHeader>
+              <div className="flex justify-between items-center">
+                <CardTitle className="flex items-center">
+                  <HiOutlineDocumentText className="h-5 w-5 mr-2" />
+                  Items de la Venta
+                </CardTitle>
+                <Button type="button" variant="outline" onClick={addItem}>
+                  <HiOutlinePlus className="h-4 w-4 mr-2" />
+                  Agregar Item
+                </Button>
+              </div>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              {(formData.items || []).map((item, index) => (
+                <div key={index} className="bg-gray-50 p-4 rounded-lg border border-gray-200">
+                  <div className="flex justify-between items-center mb-3">
+                    <h4 className="text-sm font-medium text-gray-700">Item #{index + 1}</h4>
+                    {(formData.items?.length || 0) > 1 && (
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => removeItem(index)}
+                        className="text-red-600 hover:text-red-700"
+                      >
+                        <HiOutlineTrash className="h-4 w-4" />
+                      </Button>
+                    )}
+                  </div>
+
+                  <div className="grid grid-cols-1 md:grid-cols-6 gap-3 mb-3">
+                    <div className="md:col-span-2">
+                      <Input
+                        label="Descripción *"
+                        value={item.descripcion}
+                        onChange={(e) => updateItem(index, 'descripcion', e.target.value)}
+                        placeholder="Descripción del item"
+                      />
+                    </div>
+
+                    <Input
+                      label="Cantidad"
+                      type="number"
+                      value={item.cantidad}
+                      onChange={(e) => updateItem(index, 'cantidad', Number(e.target.value))}
+                      min="0.001"
+                      step="0.001"
+                    />
+
+                    <Input
+                      label="Unidad"
+                      value={item.unidad}
+                      onChange={(e) => updateItem(index, 'unidad', e.target.value)}
+                      placeholder="m2, metro, unidad"
+                    />
+
+                    <Input
+                      label="Precio Unit."
+                      type="number"
+                      value={item.precioUnitario}
+                      onChange={(e) => updateItem(index, 'precioUnitario', Number(e.target.value))}
+                      min="0"
+                      step="0.01"
+                    />
+
+                    <Input
+                      label="Desc. %"
+                      type="number"
+                      value={item.descuento}
+                      onChange={(e) => updateItem(index, 'descuento', Number(e.target.value))}
+                      min="0"
+                      max="100"
+                    />
+                  </div>
+
+                  <Input
+                    label="Detalle"
+                    value={item.detalle}
+                    onChange={(e) => updateItem(index, 'detalle', e.target.value)}
+                    placeholder="Información adicional del item"
+                  />
+
+                  <div className="mt-3 pt-3 border-t border-gray-300">
+                    <div className="text-right">
+                      <span className="text-sm font-medium text-gray-900">
+                        Total: {CurrencyUtils.formatAmount(
+                          CalculationUtils.calculateItemTotal(item.cantidad, item.precioUnitario, item.descuento),
+                          formData.moneda
+                        )}
+                      </span>
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </CardContent>
+          </Card>
+        )}
+
         {/* Detalles del pedido */}
         <Card>
           <CardHeader>
@@ -260,26 +427,26 @@ export default function NuevaVentaPage() {
                 error={errors.fechaEntrega}
               />
 
-              <div className="grid grid-cols-2 gap-2">
-                <Input
-                  label="Descuento (%)"
-                  type="number"
-                  value={formData.descuento}
-                  onChange={(e) => handleChange('descuento', Number(e.target.value))}
-                  min="0"
-                  max="100"
-                  disabled={!!selectedPresupuesto}
-                />
-                <Input
-                  label="Impuestos (%)"
-                  type="number"
-                  value={formData.impuestos}
-                  onChange={(e) => handleChange('impuestos', Number(e.target.value))}
-                  min="0"
-                  max="100"
-                  disabled={!!selectedPresupuesto}
-                />
-              </div>
+              {ventaDirecta && (
+                <div className="grid grid-cols-2 gap-2">
+                  <Input
+                    label="Descuento (%)"
+                    type="number"
+                    value={formData.descuento}
+                    onChange={(e) => handleChange('descuento', Number(e.target.value))}
+                    min="0"
+                    max="100"
+                  />
+                  <Input
+                    label="Impuestos (%)"
+                    type="number"
+                    value={formData.impuestos}
+                    onChange={(e) => handleChange('impuestos', Number(e.target.value))}
+                    min="0"
+                    max="100"
+                  />
+                </div>
+              )}
             </div>
 
             <Input
@@ -300,6 +467,45 @@ export default function NuevaVentaPage() {
                 className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
                 placeholder="Observaciones adicionales del pedido..."
               />
+            </div>
+          </CardContent>
+        </Card>
+
+        {/* Totales */}
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center">
+              <HiOutlineCalculator className="h-5 w-5 mr-2" />
+              Resumen de Totales
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="bg-white p-6 rounded-lg border border-gray-200">
+              <h4 className="font-medium text-gray-900 mb-4">Totales de la Venta</h4>
+              <div className="space-y-3 text-sm">
+                <div className="flex justify-between">
+                  <span>Subtotal:</span>
+                  <span>{CurrencyUtils.formatAmount(totales.subtotal, formData.moneda)}</span>
+                </div>
+                {totales.descuentoTotal > 0 && (
+                  <div className="flex justify-between text-green-600">
+                    <span>Descuento:</span>
+                    <span>-{CurrencyUtils.formatAmount(totales.descuentoTotal, formData.moneda)}</span>
+                  </div>
+                )}
+                {totales.impuestos > 0 && (
+                  <div className="flex justify-between">
+                    <span>Impuestos:</span>
+                    <span>{CurrencyUtils.formatAmount(totales.impuestos, formData.moneda)}</span>
+                  </div>
+                )}
+                <div className="border-t pt-3 flex justify-between font-bold text-lg">
+                  <span>Total:</span>
+                  <span className="text-blue-600">
+                    {CurrencyUtils.formatAmount(totales.total, formData.moneda)}
+                  </span>
+                </div>
+              </div>
             </div>
           </CardContent>
         </Card>

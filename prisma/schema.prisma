@@ -1,5 +1,3 @@
-// Schema Prisma Completo para Sistema de Gestión de Carpintería de Aluminio
-
 generator client {
   provider = "prisma-client-js"
 }
@@ -9,115 +7,360 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
-// ===============================
-// MODELOS DE USUARIO Y AUTENTICACIÓN
-// ===============================
-
 model User {
-  id               String            @id @default(uuid())
-  codigo           String            @unique // USR-001, USR-002
-  cognitoId        String?           @unique
-  email            String            @unique
-  name             String
-  password         String?           // Temporal hasta AWS Cognito
-  role             Role              @default(USER)
-  activo           Boolean           @default(true)
-  createdAt        DateTime          @default(now())
-  updatedAt        DateTime          @updatedAt
-  lastLoginAt      DateTime?
+  id                    String                 @id @default(uuid())
+  cognitoId             String?                @unique
+  email                 String                 @unique
+  name                  String
+  role                  Role                   @default(USER)
+  activo                Boolean                @default(true)
+  createdAt             DateTime               @default(now())
+  updatedAt             DateTime               @updatedAt
+  lastLoginAt           DateTime?
+  codigo                String                 @unique
+  password              String?
+  gastosGenerales       GastoGeneral[]
+  movimientosInventario MovimientoInventario[]
+  pedidos               Pedido[]
+  presupuestos          Presupuesto[]
+  transacciones         Transaccion[]
+
+  @@map("users")
+}
+
+model Cliente {
+  id            String        @id @default(uuid())
+  codigo        String        @unique
+  nombre        String
+  email         String?
+  telefono      String?
+  direccion     String?
+  cuit          String?
+  notas         String?
+  activo        Boolean       @default(true)
+  createdAt     DateTime      @default(now())
+  updatedAt     DateTime      @updatedAt
+  cheques       Cheque[]
+  pedidos       Pedido[]
+  presupuestos  Presupuesto[]
+  transacciones Transaccion[]
+
+  @@map("clientes")
+}
+
+model Proveedor {
+  id            String        @id @default(uuid())
+  codigo        String        @unique
+  nombre        String
+  email         String?
+  telefono      String?
+  direccion     String?
+  cuit          String?
+  notas         String?
+  activo        Boolean       @default(true)
+  createdAt     DateTime      @default(now())
+  updatedAt     DateTime      @updatedAt
+  materiales    Material[]
+  transacciones Transaccion[]
+
+  @@map("proveedores")
+}
+
+model Material {
+  id                    String                 @id @default(uuid())
+  codigo                String                 @unique
+  nombre                String
+  descripcion           String?
+  tipo                  TipoMaterial
+  unidadMedida          String
+  precioUnitario        Decimal                @db.Decimal(10, 2)
+  moneda                Moneda                 @default(PESOS)
+  stockActual           Decimal                @default(0) @db.Decimal(10, 2)
+  stockMinimo           Decimal                @default(0) @db.Decimal(10, 2)
+  activo                Boolean                @default(true)
+  proveedorId           String
+  createdAt             DateTime               @default(now())
+  updatedAt             DateTime               @updatedAt
+  proveedor             Proveedor              @relation(fields: [proveedorId], references: [id])
+  materialPedido        MaterialPedido[]
+  materialPresupuesto   MaterialPresupuesto[]
+  movimientosInventario MovimientoInventario[]
+
+  @@map("materiales")
+}
+
+model Presupuesto {
+  id              String                @id @default(uuid())
+  numero          String                @unique
+  clienteId       String
+  fechaEmision    DateTime              @default(now())
+  fechaValidez    DateTime
+  estado          EstadoPresupuesto     @default(PENDIENTE)
+  subtotal        Decimal               @db.Decimal(12, 2)
+  descuento       Decimal?              @default(0) @db.Decimal(10, 2)
+  impuestos       Decimal?              @default(0) @db.Decimal(10, 2)
+  total           Decimal               @db.Decimal(12, 2)
+  moneda          Moneda                @default(PESOS)
+  descripcionObra String?
+  observaciones   String?
+  condicionesPago String?
+  tiempoEntrega   String?
+  validezDias     Int                   @default(30)
+  userId          String
+  createdAt       DateTime              @default(now())
+  updatedAt       DateTime              @updatedAt
+  items           ItemPresupuesto[]
+  materiales      MaterialPresupuesto[]
+  pedido          Pedido?
+  cliente         Cliente               @relation(fields: [clienteId], references: [id])
+  user            User                  @relation(fields: [userId], references: [id])
+
+  @@map("presupuestos")
+}
+
+model ItemPresupuesto {
+  id             String      @id @default(uuid())
+  presupuestoId  String
+  orden          Int
+  descripcion    String
+  detalle        String?
+  cantidad       Decimal     @db.Decimal(10, 3)
+  unidad         String
+  precioUnitario Decimal     @db.Decimal(10, 2)
+  descuento      Decimal?    @default(0) @db.Decimal(5, 2)
+  total          Decimal     @db.Decimal(12, 2)
+  createdAt      DateTime    @default(now())
+  updatedAt      DateTime    @updatedAt
+  presupuesto    Presupuesto @relation(fields: [presupuestoId], references: [id], onDelete: Cascade)
+
+  @@map("items_presupuesto")
+}
+
+model MaterialPresupuesto {
+  id             String      @id @default(uuid())
+  presupuestoId  String
+  materialId     String
+  cantidad       Decimal     @db.Decimal(10, 3)
+  precioUnitario Decimal     @db.Decimal(10, 2)
+  total          Decimal     @db.Decimal(12, 2)
+  createdAt      DateTime    @default(now())
+  updatedAt      DateTime    @updatedAt
+  material       Material    @relation(fields: [materialId], references: [id])
+  presupuesto    Presupuesto @relation(fields: [presupuestoId], references: [id], onDelete: Cascade)
+
+  @@map("materiales_presupuesto")
+}
+
+model Pedido {
+  id               String           @id @default(uuid())
+  numero           String           @unique
+  clienteId        String
+  presupuestoId    String?          @unique
+  fechaPedido      DateTime         @default(now())
+  fechaEntrega     DateTime?
+  fechaEntregaReal DateTime?
+  estado           EstadoPedido     @default(PENDIENTE)
+  prioridad        Prioridad        @default(NORMAL)
+  porcentajeAvance Decimal          @default(0) @db.Decimal(5, 2)
+  subtotal         Decimal          @db.Decimal(12, 2)
+  descuento        Decimal?         @default(0) @db.Decimal(10, 2)
+  impuestos        Decimal?         @default(0) @db.Decimal(10, 2)
+  total            Decimal          @db.Decimal(12, 2)
+  moneda           Moneda           @default(PESOS)
+  totalCobrado     Decimal          @default(0) @db.Decimal(12, 2)
+  saldoPendiente   Decimal          @default(0) @db.Decimal(12, 2)
+  descripcionObra  String?
+  observaciones    String?
+  condicionesPago  String?
+  lugarEntrega     String?
+  userId           String
+  createdAt        DateTime         @default(now())
+  updatedAt        DateTime         @updatedAt
+  gastos           GastoPedido[]
+  materiales       MaterialPedido[]
+  cliente          Cliente          @relation(fields: [clienteId], references: [id])
+  presupuesto      Presupuesto?     @relation(fields: [presupuestoId], references: [id])
+  user             User             @relation(fields: [userId], references: [id])
+  transacciones    Transaccion[]
+  items           ItemPedido[]
+
+  @@map("pedidos")
+}
+
+model ItemPedido {
+  id              String      @id @default(uuid())
+  pedidoId        String
+  orden           Int         // Para ordenar los items
+  descripcion     String
+  detalle         String?
+  cantidad        Decimal     @db.Decimal(10, 3)
+  unidad          String      // "m2", "metro", "unidad"
+  precioUnitario  Decimal     @db.Decimal(10, 2)
+  descuento       Decimal?    @db.Decimal(5, 2) @default(0) // Porcentaje
+  total           Decimal     @db.Decimal(12, 2)
   
   // Relaciones
-  presupuestos     Presupuesto[]
-  pedidos          Pedido[]
-  transacciones    Transaccion[]
-  gastosGenerales  GastoGeneral[]
-  // AGREGAR ESTA LÍNEA:
-  movimientosInventario MovimientoInventario[]
+  pedido          Pedido      @relation(fields: [pedidoId], references: [id], onDelete: Cascade)
   
-  @@map("users")
+  createdAt       DateTime    @default(now())
+  updatedAt       DateTime    @updatedAt
+  
+  @@map("items_pedido")
+}
+
+model MaterialPedido {
+  id             String    @id @default(uuid())
+  pedidoId       String
+  materialId     String
+  cantidad       Decimal   @db.Decimal(10, 3)
+  precioUnitario Decimal   @db.Decimal(10, 2)
+  total          Decimal   @db.Decimal(12, 2)
+  entregado      Boolean   @default(false)
+  fechaEntrega   DateTime?
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+  material       Material  @relation(fields: [materialId], references: [id])
+  pedido         Pedido    @relation(fields: [pedidoId], references: [id], onDelete: Cascade)
+
+  @@map("materiales_pedido")
+}
+
+model MedioPago {
+  id            String        @id @default(uuid())
+  nombre        String        @unique
+  descripcion   String?
+  activo        Boolean       @default(true)
+  createdAt     DateTime      @default(now())
+  updatedAt     DateTime      @updatedAt
+  transacciones Transaccion[]
+
+  @@map("medios_pago")
+}
+
+model Transaccion {
+  id                String          @id @default(uuid())
+  numero            String          @unique
+  tipo              TipoTransaccion
+  concepto          String
+  descripcion       String?
+  monto             Decimal         @db.Decimal(12, 2)
+  moneda            Moneda          @default(PESOS)
+  cotizacion        Decimal?        @db.Decimal(10, 4)
+  fecha             DateTime        @default(now())
+  fechaVencimiento  DateTime?
+  numeroComprobante String?
+  tipoComprobante   String?
+  clienteId         String?
+  proveedorId       String?
+  pedidoId          String?
+  medioPagoId       String
+  userId            String
+  createdAt         DateTime        @default(now())
+  updatedAt         DateTime        @updatedAt
+  cheque            Cheque?
+  cliente           Cliente?        @relation(fields: [clienteId], references: [id])
+  medioPago         MedioPago       @relation(fields: [medioPagoId], references: [id])
+  pedido            Pedido?         @relation(fields: [pedidoId], references: [id])
+  proveedor         Proveedor?      @relation(fields: [proveedorId], references: [id])
+  user              User            @relation(fields: [userId], references: [id])
+
+  @@map("transacciones")
+}
+
+model Cheque {
+  id               String       @id @default(uuid())
+  numero           String
+  banco            String
+  sucursal         String?
+  cuit             String?
+  fechaEmision     DateTime
+  fechaVencimiento DateTime
+  monto            Decimal      @db.Decimal(12, 2)
+  moneda           Moneda       @default(PESOS)
+  estado           EstadoCheque @default(CARTERA)
+  fechaCobro       DateTime?
+  motivoRechazo    String?
+  clienteId        String?
+  transaccionId    String?      @unique
+  createdAt        DateTime     @default(now())
+  updatedAt        DateTime     @updatedAt
+  cliente          Cliente?     @relation(fields: [clienteId], references: [id])
+  transaccion      Transaccion? @relation(fields: [transaccionId], references: [id])
+
+  @@map("cheques")
+}
+
+model GastoGeneral {
+  id            String   @id @default(uuid())
+  numero        String   @unique
+  descripcion   String
+  categoria     String
+  subcategoria  String?
+  monto         Decimal  @db.Decimal(12, 2)
+  moneda        Moneda   @default(PESOS)
+  fecha         DateTime @default(now())
+  periodo       String?
+  numeroFactura String?
+  proveedor     String?
+  userId        String
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+  user          User     @relation(fields: [userId], references: [id])
+
+  @@map("gastos_generales")
+}
+
+model GastoPedido {
+  id          String   @id @default(uuid())
+  pedidoId    String
+  descripcion String
+  categoria   String
+  monto       Decimal  @db.Decimal(12, 2)
+  moneda      Moneda   @default(PESOS)
+  fecha       DateTime @default(now())
+  comprobante String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  pedido      Pedido   @relation(fields: [pedidoId], references: [id], onDelete: Cascade)
+
+  @@map("gastos_pedido")
+}
+
+model Configuracion {
+  id        String   @id @default(uuid())
+  clave     String   @unique
+  valor     String
+  tipo      String
+  grupo     String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("configuracion")
+}
+
+model MovimientoInventario {
+  id            String         @id @default(uuid())
+  materialId    String
+  tipo          TipoMovimiento
+  cantidad      Decimal        @db.Decimal(10, 3)
+  stockAnterior Decimal        @db.Decimal(10, 3)
+  stockNuevo    Decimal        @db.Decimal(10, 3)
+  motivo        String
+  referencia    String?
+  fecha         DateTime       @default(now())
+  userId        String
+  createdAt     DateTime       @default(now())
+  updatedAt     DateTime       @updatedAt
+  material      Material       @relation(fields: [materialId], references: [id])
+  user          User           @relation(fields: [userId], references: [id])
+
+  @@map("movimientos_inventario")
 }
 
 enum Role {
   ADMIN
   MANAGER
   USER
-}
-
-// ===============================
-// MODELOS DE NEGOCIO PRINCIPALES
-// ===============================
-
-model Cliente {
-  id            String         @id @default(uuid())
-  codigo        String         @unique // Auto-generado: CLI-001, CLI-002
-  nombre        String
-  email         String?
-  telefono      String?
-  direccion     String?
-  cuit          String?
-  notas         String?
-  activo        Boolean        @default(true)
-  createdAt     DateTime       @default(now())
-  updatedAt     DateTime       @updatedAt
-  
-  // Relaciones
-  presupuestos  Presupuesto[]
-  pedidos       Pedido[]
-  transacciones Transaccion[]
-  cheques       Cheque[]
-  
-  @@map("clientes")
-}
-
-model Proveedor {
-  id            String          @id @default(uuid())
-  codigo        String          @unique // PROV-001, PROV-002
-  nombre        String
-  email         String?
-  telefono      String?
-  direccion     String?
-  cuit          String?
-  notas         String?
-  activo        Boolean         @default(true)
-  createdAt     DateTime        @default(now())
-  updatedAt     DateTime        @updatedAt
-  
-  // Relaciones
-  materiales    Material[]
-  transacciones Transaccion[]
-  
-  @@map("proveedores")
-}
-
-// ===============================
-// MATERIALES E INVENTARIO
-// ===============================
-
-model Material {
-  id              String            @id @default(uuid())
-  codigo          String            @unique
-  nombre          String
-  descripcion     String?
-  tipo            TipoMaterial
-  unidadMedida    String            // "metro", "m2", "unidad", "kg"
-  precioUnitario  Decimal           @db.Decimal(10, 2)
-  moneda          Moneda            @default(PESOS)
-  stockActual     Decimal           @db.Decimal(10, 2) @default(0)
-  stockMinimo     Decimal           @db.Decimal(10, 2) @default(0)
-  activo          Boolean           @default(true)
-  
-  // Relaciones
-  proveedorId     String
-  proveedor       Proveedor         @relation(fields: [proveedorId], references: [id])
-  materialPedido  MaterialPedido[]
-  materialPresupuesto MaterialPresupuesto[]
-  // AGREGAR ESTA LÍNEA:
-  movimientosInventario MovimientoInventario[]
-  
-  createdAt       DateTime          @default(now())
-  updatedAt       DateTime          @updatedAt
-  
-  @@map("materiales")
 }
 
 enum TipoMaterial {
@@ -129,46 +372,6 @@ enum TipoMaterial {
   OTRO
 }
 
-// ===============================
-// PRESUPUESTOS
-// ===============================
-
-model Presupuesto {
-  id                String                @id @default(uuid())
-  numero            String                @unique // PRES-2024-001
-  clienteId         String
-  fechaEmision      DateTime              @default(now())
-  fechaValidez      DateTime
-  estado            EstadoPresupuesto     @default(PENDIENTE)
-  
-  // Totales
-  subtotal          Decimal               @db.Decimal(12, 2)
-  descuento         Decimal?              @db.Decimal(10, 2) @default(0)
-  impuestos         Decimal?              @db.Decimal(10, 2) @default(0)
-  total             Decimal               @db.Decimal(12, 2)
-  moneda            Moneda                @default(PESOS)
-  
-  // Información adicional
-  descripcionObra   String?
-  observaciones     String?
-  condicionesPago   String?
-  tiempoEntrega     String?
-  validezDias       Int                   @default(30)
-  
-  // Relaciones
-  cliente           Cliente               @relation(fields: [clienteId], references: [id])
-  userId            String
-  user              User                  @relation(fields: [userId], references: [id])
-  items             ItemPresupuesto[]
-  materiales        MaterialPresupuesto[]
-  pedido            Pedido?               // Relación 1:1 cuando se convierte
-  
-  createdAt         DateTime              @default(now())
-  updatedAt         DateTime              @updatedAt
-  
-  @@map("presupuestos")
-}
-
 enum EstadoPresupuesto {
   BORRADOR
   PENDIENTE
@@ -177,97 +380,6 @@ enum EstadoPresupuesto {
   RECHAZADO
   VENCIDO
   CONVERTIDO
-}
-
-model ItemPresupuesto {
-  id              String        @id @default(uuid())
-  presupuestoId   String
-  orden           Int           // Para ordenar los items
-  descripcion     String
-  detalle         String?
-  cantidad        Decimal       @db.Decimal(10, 3)
-  unidad          String        // "m2", "metro", "unidad"
-  precioUnitario  Decimal       @db.Decimal(10, 2)
-  descuento       Decimal?      @db.Decimal(5, 2) @default(0) // Porcentaje
-  total           Decimal       @db.Decimal(12, 2)
-  
-  // Relaciones
-  presupuesto     Presupuesto   @relation(fields: [presupuestoId], references: [id], onDelete: Cascade)
-  
-  createdAt       DateTime      @default(now())
-  updatedAt       DateTime      @updatedAt
-  
-  @@map("items_presupuesto")
-}
-
-model MaterialPresupuesto {
-  id              String        @id @default(uuid())
-  presupuestoId   String
-  materialId      String
-  cantidad        Decimal       @db.Decimal(10, 3)
-  precioUnitario  Decimal       @db.Decimal(10, 2)
-  total           Decimal       @db.Decimal(12, 2)
-  
-  // Relaciones
-  presupuesto     Presupuesto   @relation(fields: [presupuestoId], references: [id], onDelete: Cascade)
-  material        Material      @relation(fields: [materialId], references: [id])
-  
-  createdAt       DateTime      @default(now())
-  updatedAt       DateTime      @updatedAt
-  
-  @@map("materiales_presupuesto")
-}
-
-// ===============================
-// PEDIDOS/VENTAS
-// ===============================
-
-model Pedido {
-  id                String          @id @default(uuid())
-  numero            String          @unique // VEN-2024-001
-  clienteId         String
-  presupuestoId     String?         @unique // Opcional, puede venir de presupuesto
-  
-  // Fechas
-  fechaPedido       DateTime        @default(now())
-  fechaEntrega      DateTime?
-  fechaEntregaReal  DateTime?
-  
-  // Estado y seguimiento
-  estado            EstadoPedido    @default(PENDIENTE)
-  prioridad         Prioridad       @default(NORMAL)
-  porcentajeAvance  Decimal         @db.Decimal(5, 2) @default(0) // 0-100
-  
-  // Totales
-  subtotal          Decimal         @db.Decimal(12, 2)
-  descuento         Decimal?        @db.Decimal(10, 2) @default(0)
-  impuestos         Decimal?        @db.Decimal(10, 2) @default(0)
-  total             Decimal         @db.Decimal(12, 2)
-  moneda            Moneda          @default(PESOS)
-  
-  // Saldos
-  totalCobrado      Decimal         @db.Decimal(12, 2) @default(0)
-  saldoPendiente    Decimal         @db.Decimal(12, 2) @default(0)
-  
-  // Información adicional
-  descripcionObra   String?
-  observaciones     String?
-  condicionesPago   String?
-  lugarEntrega      String?
-  
-  // Relaciones
-  cliente           Cliente         @relation(fields: [clienteId], references: [id])
-  presupuesto       Presupuesto?    @relation(fields: [presupuestoId], references: [id])
-  userId            String
-  user              User            @relation(fields: [userId], references: [id])
-  materiales        MaterialPedido[]
-  transacciones     Transaccion[]
-  gastos            GastoPedido[]
-  
-  createdAt         DateTime        @default(now())
-  updatedAt         DateTime        @updatedAt
-  
-  @@map("pedidos")
 }
 
 enum EstadoPedido {
@@ -290,237 +402,38 @@ enum Prioridad {
   URGENTE
 }
 
-model MaterialPedido {
-  id              String      @id @default(uuid())
-  pedidoId        String
-  materialId      String
-  cantidad        Decimal     @db.Decimal(10, 3)
-  precioUnitario  Decimal     @db.Decimal(10, 2)
-  total           Decimal     @db.Decimal(12, 2)
-  entregado       Boolean     @default(false)
-  fechaEntrega    DateTime?
-  
-  // Relaciones
-  pedido          Pedido      @relation(fields: [pedidoId], references: [id], onDelete: Cascade)
-  material        Material    @relation(fields: [materialId], references: [id])
-  
-  createdAt       DateTime    @default(now())
-  updatedAt       DateTime    @updatedAt
-  
-  @@map("materiales_pedido")
-}
-
-// ===============================
-// SISTEMA FINANCIERO
-// ===============================
-
-model MedioPago {
-  id            String        @id @default(uuid())
-  nombre        String        @unique // "Efectivo", "Transferencia", "Cheque", "Tarjeta Débito", etc.
-  descripcion   String?
-  activo        Boolean       @default(true)
-  
-  // Relaciones
-  transacciones Transaccion[]
-  
-  createdAt     DateTime      @default(now())
-  updatedAt     DateTime      @updatedAt
-  
-  @@map("medios_pago")
-}
-
-model Transaccion {
-  id              String            @id @default(uuid())
-  numero          String            @unique // TRX-2024-001
-  tipo            TipoTransaccion
-  concepto        String            // "Anticipo", "Pago obra", "Compra materiales"
-  descripcion     String?
-  
-  // Montos
-  monto           Decimal           @db.Decimal(12, 2)
-  moneda          Moneda            @default(PESOS)
-  cotizacion      Decimal?          @db.Decimal(10, 4) // Si es USD, cotización en pesos
-  
-  // Fechas
-  fecha           DateTime          @default(now())
-  fechaVencimiento DateTime?
-  
-  // Comprobantes
-  numeroComprobante String?
-  tipoComprobante   String?         // "Factura A", "Recibo", "Nota Crédito"
-  
-  // Relaciones opcionales
-  clienteId       String?
-  proveedorId     String?
-  pedidoId        String?
-  medioPagoId     String
-  userId          String
-  
-  cliente         Cliente?          @relation(fields: [clienteId], references: [id])
-  proveedor       Proveedor?        @relation(fields: [proveedorId], references: [id])
-  pedido          Pedido?           @relation(fields: [pedidoId], references: [id])
-  medioPago       MedioPago         @relation(fields: [medioPagoId], references: [id])
-  user            User              @relation(fields: [userId], references: [id])
-  cheque          Cheque?           // Relación 1:1 si es pago con cheque
-  
-  createdAt       DateTime          @default(now())
-  updatedAt       DateTime          @updatedAt
-  
-  @@map("transacciones")
-}
-
 enum TipoTransaccion {
-  INGRESO           // Cobro de cliente
-  EGRESO           // Pago a proveedor
-  ANTICIPO         // Anticipo de cliente
-  PAGO_OBRA        // Pago por obra específica
-  PAGO_PROVEEDOR   // Pago a proveedor
-  GASTO_GENERAL    // Gasto general de empresa
-  TRANSFERENCIA    // Transferencia entre cuentas
-  AJUSTE           // Ajuste contable
-}
-
-model Cheque {
-  id                String          @id @default(uuid())
-  numero            String
-  banco             String
-  sucursal          String?
-  cuit              String?
-  
-  // Fechas y montos
-  fechaEmision      DateTime
-  fechaVencimiento  DateTime
-  monto             Decimal         @db.Decimal(12, 2)
-  moneda            Moneda          @default(PESOS)
-  
-  // Estado y seguimiento
-  estado            EstadoCheque    @default(CARTERA)
-  fechaCobro        DateTime?
-  motivoRechazo     String?
-  
-  // Relaciones
-  clienteId         String?
-  cliente           Cliente?        @relation(fields: [clienteId], references: [id])
-  transaccionId     String?         @unique
-  transaccion       Transaccion?    @relation(fields: [transaccionId], references: [id])
-  
-  createdAt         DateTime        @default(now())
-  updatedAt         DateTime        @updatedAt
-  
-  @@map("cheques")
+  INGRESO
+  EGRESO
+  ANTICIPO
+  PAGO_OBRA
+  PAGO_PROVEEDOR
+  GASTO_GENERAL
+  TRANSFERENCIA
+  AJUSTE
 }
 
 enum EstadoCheque {
-  CARTERA       // En cartera, pendiente de cobro
-  DEPOSITADO    // Depositado en banco
-  COBRADO       // Cobrado exitosamente
-  RECHAZADO     // Rechazado por el banco
-  ANULADO       // Anulado
-  ENDOSADO      // Endosado a terceros
+  CARTERA
+  DEPOSITADO
+  COBRADO
+  RECHAZADO
+  ANULADO
+  ENDOSADO
 }
-
-// ===============================
-// GASTOS
-// ===============================
-
-model GastoGeneral {
-  id              String      @id @default(uuid())
-  numero          String      @unique // GG-2024-001
-  descripcion     String
-  categoria       String      // "Alquiler", "Servicios", "Sueldos", "Impuestos"
-  subcategoria    String?     // "Luz", "Gas", "Internet"
-  
-  // Montos
-  monto           Decimal     @db.Decimal(12, 2)
-  moneda          Moneda      @default(PESOS)
-  
-  // Fechas
-  fecha           DateTime    @default(now())
-  periodo         String?     // "2024-01" para gastos mensuales
-  
-  // Comprobantes
-  numeroFactura   String?
-  proveedor       String?
-  
-  // Relaciones
-  userId          String
-  user            User        @relation(fields: [userId], references: [id])
-  
-  createdAt       DateTime    @default(now())
-  updatedAt       DateTime    @updatedAt
-  
-  @@map("gastos_generales")
-}
-
-model GastoPedido {
-  id          String      @id @default(uuid())
-  pedidoId    String
-  descripcion String
-  categoria   String      // "Transporte", "Instalación", "Materiales extras"
-  monto       Decimal     @db.Decimal(12, 2)
-  moneda      Moneda      @default(PESOS)
-  fecha       DateTime    @default(now())
-  comprobante String?
-  
-  // Relaciones
-  pedido      Pedido      @relation(fields: [pedidoId], references: [id], onDelete: Cascade)
-  
-  createdAt   DateTime    @default(now())
-  updatedAt   DateTime    @updatedAt
-  
-  @@map("gastos_pedido")
-}
-
-// ===============================
-// ENUMS GLOBALES
-// ===============================
 
 enum Moneda {
   PESOS
   DOLARES
 }
 
-// ===============================
-// CONFIGURACIÓN Y METADATOS
-// ===============================
-
-model Configuracion {
-  id        String   @id @default(uuid())
-  clave     String   @unique
-  valor     String
-  tipo      String   // "string", "number", "boolean", "json"
-  grupo     String   // "general", "contabilidad", "notificaciones"
-  
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-  
-  @@map("configuracion")
-}
-
-model MovimientoInventario {
-  id            String    @id @default(uuid())
-  materialId    String
-  tipo          TipoMovimiento
-  cantidad      Decimal   @db.Decimal(10, 3)
-  stockAnterior Decimal   @db.Decimal(10, 3)
-  stockNuevo    Decimal   @db.Decimal(10, 3)
-  motivo        String
-  referencia    String?
-  fecha         DateTime  @default(now())
-  userId        String
-  
-  // Relaciones
-  material      Material  @relation(fields: [materialId], references: [id])
-  user          User      @relation(fields: [userId], references: [id])
-  
-  createdAt     DateTime  @default(now())
-  updatedAt     DateTime  @updatedAt
-  
-  @@map("movimientos_inventario")
-}
-
 enum TipoMovimiento {
   ENTRADA
   SALIDA
   AJUSTE
+}
+
+enum TipoLiquidacion {
+  PORCENTAJE
+  MONTO_FIJO
 }

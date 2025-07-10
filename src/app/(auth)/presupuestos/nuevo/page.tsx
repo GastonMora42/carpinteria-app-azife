@@ -1,7 +1,7 @@
-// src/app/(auth)/presupuestos/nuevo/page.tsx
+// src/app/(auth)/presupuestos/nuevo/page.tsx - ACTUALIZADO CON NÚMERO MANUAL
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { useClients } from '@/hooks/use-clients';
 import { usePresupuestos } from '@/hooks/use-presupuestos';
@@ -18,7 +18,8 @@ import {
   HiOutlineTrash,
   HiOutlineDocumentText,
   HiOutlineUsers,
-  HiOutlineCalculator
+  HiOutlineCalculator,
+  HiOutlineRefresh
 } from 'react-icons/hi';
 
 export default function NuevoPresupuestoPage() {
@@ -27,6 +28,7 @@ export default function NuevoPresupuestoPage() {
   const { createPresupuesto } = usePresupuestos();
 
   const [formData, setFormData] = useState<PresupuestoFormData>({
+    numero: '', // NUEVO: Campo para número manual
     clienteId: '',
     fechaValidez: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000), // 30 días
     descripcionObra: '',
@@ -49,6 +51,8 @@ export default function NuevoPresupuestoPage() {
 
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [numeroSugerido, setNumeroSugerido] = useState('');
+  const [generandoNumero, setGenerandoNumero] = useState(false);
 
   // Calcular totales
   const totales = CalculationUtils.calculateOrderTotals(
@@ -56,6 +60,35 @@ export default function NuevoPresupuestoPage() {
     formData.descuento,
     formData.impuestos
   );
+
+  // Función para generar número sugerido
+  const generarNumeroSugerido = async () => {
+    setGenerandoNumero(true);
+    try {
+      const response = await fetch('/api/presupuestos/generar-numero', {
+        credentials: 'include'
+      });
+      
+      if (response.ok) {
+        const data = await response.json();
+        setNumeroSugerido(data.numero);
+        
+        // Si el campo está vacío, usar el número sugerido
+        if (!formData.numero) {
+          setFormData(prev => ({ ...prev, numero: data.numero }));
+        }
+      }
+    } catch (error) {
+      console.error('Error generando número:', error);
+    } finally {
+      setGenerandoNumero(false);
+    }
+  };
+
+  // Generar número sugerido al cargar la página
+  useEffect(() => {
+    generarNumeroSugerido();
+  }, []);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -69,7 +102,9 @@ export default function NuevoPresupuestoPage() {
       
       const dataToSubmit = {
         ...formData,
-        fechaValidez
+        fechaValidez,
+        // Si no hay número, enviarlo como undefined para que se genere automáticamente
+        numero: formData.numero?.trim() || undefined
       };
 
       const validatedData = presupuestoSchema.parse(dataToSubmit);
@@ -129,6 +164,13 @@ export default function NuevoPresupuestoPage() {
     }));
   };
 
+  const usarNumeroSugerido = () => {
+    setFormData(prev => ({ ...prev, numero: numeroSugerido }));
+    if (errors.numero) {
+      setErrors(prev => ({ ...prev, numero: '' }));
+    }
+  };
+
   return (
     <div className="space-y-6">
       {/* Header */}
@@ -166,7 +208,53 @@ export default function NuevoPresupuestoPage() {
             </CardTitle>
           </CardHeader>
           <CardContent className="space-y-4">
+            {/* NUEVO: Campo para número de presupuesto */}
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <div className="flex items-center justify-between">
+                  <label className="block text-sm font-medium text-gray-700">
+                    Número de Presupuesto
+                  </label>
+                  <div className="flex items-center space-x-2">
+                    {numeroSugerido && numeroSugerido !== formData.numero && (
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="sm"
+                        onClick={usarNumeroSugerido}
+                        className="text-xs text-blue-600 hover:text-blue-700"
+                      >
+                        Usar: {numeroSugerido}
+                      </Button>
+                    )}
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="sm"
+                      onClick={generarNumeroSugerido}
+                      disabled={generandoNumero}
+                      className="text-xs"
+                    >
+                      {generandoNumero ? (
+                        <div className="animate-spin rounded-full h-3 w-3 border-b-2 border-blue-600" />
+                      ) : (
+                        <HiOutlineRefresh className="h-3 w-3" />
+                      )}
+                    </Button>
+                  </div>
+                </div>
+                <Input
+                  value={formData.numero || ''}
+                  onChange={(e) => handleChange('numero', e.target.value)}
+                  error={errors.numero}
+                  placeholder="Ej: PRES-2025-001 (opcional, se genera automáticamente)"
+                  className="font-mono"
+                />
+                <p className="text-xs text-gray-500">
+                  Deja vacío para generar automáticamente
+                </p>
+              </div>
+
               <Select
                 label="Cliente *"
                 value={formData.clienteId}
@@ -180,7 +268,9 @@ export default function NuevoPresupuestoPage() {
                   </option>
                 ))}
               </Select>
+            </div>
 
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div className="grid grid-cols-2 gap-2">
                 <Input
                   label="Validez (días)"

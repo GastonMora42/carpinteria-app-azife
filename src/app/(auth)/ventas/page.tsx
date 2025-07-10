@@ -492,18 +492,18 @@ export default function VentasPage() {
                         </div>
                       </TableCell>
                       <TableCell>
-                        <div className="w-full">
-                          <div className="flex justify-between text-xs text-gray-600 mb-1">
-                            <span>Avance</span>
-                            <span>{venta.avance}%</span>
-                          </div>
-                          <div className="w-full bg-gray-200 rounded-full h-2">
-                            <div
-                              className={`h-2 rounded-full ${getAvanceColor(Number(venta.avance) || 0)}`}
-                              style={{ width: `${Number(venta.avance) || 0}%` }}
-                            />
-                          </div>
-                        </div>
+                      <div className="w-full">
+  <div className="flex justify-between text-xs text-gray-600 mb-1">
+    <span>Avance</span>
+    <span>{Number(venta.porcentajeAvance) || 0}%</span>
+  </div>
+  <div className="w-full bg-gray-200 rounded-full h-2">
+    <div
+      className={`h-2 rounded-full ${getAvanceColor(Number(venta.porcentajeAvance) || 0)}`}
+      style={{ width: `${Number(venta.porcentajeAvance) || 0}%` }}
+    />
+  </div>
+</div>
                       </TableCell>
                       <TableCell>
                         {venta.fechaEntrega ? (

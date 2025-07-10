@@ -32,8 +32,18 @@ interface PagoModalProps {
   onSubmit: (data: TransaccionFormData) => Promise<void>;
 }
 
+interface PagoFormData {
+  monto: number;
+  concepto: string;
+  descripcion: string;
+  fecha: string; // Mantener como string en el formulario
+  medioPagoId: string;
+  numeroComprobante: string;
+}
+
+
 function PagoModal({ isOpen, onClose, venta, onSubmit }: PagoModalProps) {
-  const [formData, setFormData] = useState({
+  const [formData, setFormData] = useState<PagoFormData>({
     monto: venta?.saldoPendiente || 0,
     concepto: `Pago obra ${venta?.numero}`,
     descripcion: '',
@@ -234,7 +244,7 @@ export default function SaldosPage() {
     if (!matchesSearch) return false;
     
     if (rangoFilter) {
-      const clasificacion = clasificarPorAntiguedad(venta.fechaPedido);
+      const clasificacion = clasificarPorAntiguedad(String(venta.fechaPedido));
       return clasificacion.value === rangoFilter;
     }
     
@@ -383,7 +393,11 @@ export default function SaldosPage() {
               </TableHeader>
               <TableBody>
                 {filteredVentas.map((venta) => {
-                  const antiguedad = clasificarPorAntiguedad(venta.fechaPedido);
+                  // Convertimos la fecha a string para clasificarPorAntiguedad
+                  const fechaPedidoStr = typeof venta.fechaPedido === 'string'
+                    ? venta.fechaPedido
+                    : new Date(venta.fechaPedido).toISOString();
+                  const antiguedad = clasificarPorAntiguedad(fechaPedidoStr);
                   const diasAntiguedad = Math.round((Date.now() - new Date(venta.fechaPedido).getTime()) / (1000 * 60 * 60 * 24));
                   const porcentajeCobrado = venta.total > 0 ? ((venta.totalCobrado / venta.total) * 100) : 0;
                   

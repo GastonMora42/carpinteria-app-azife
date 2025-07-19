@@ -1,10 +1,11 @@
-// src/app/(auth)/ventas/page.tsx
+// src/app/(auth)/ventas/page.tsx - VERSIÓN ACTUALIZADA CON PAGOS
 'use client';
 
 import { useState } from 'react';
 import { useVentas } from '@/hooks/use-ventas';
 import { useClients } from '@/hooks/use-clients';
 import { useTransacciones } from '@/hooks/use-transacciones';
+import { useAlertasCobros } from '@/hooks/use-pagos-ventas';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
@@ -14,6 +15,7 @@ import { Table, TableBody, TableCell, TableHeader, TableHeaderCell, TableRow } f
 import { Currency, CurrencyUtils, DateUtils } from '@/lib/utils/calculations';
 import { ESTADOS_PEDIDO } from '@/lib/utils/validators';
 import { TransaccionFormData } from '@/lib/validations/transaccion';
+import Link from 'next/link';
 import {
   HiOutlineSearch,
   HiOutlinePlus,
@@ -25,7 +27,8 @@ import {
   HiOutlineClock,
   HiOutlineTruck,
   HiOutlineCheckCircle,
-  HiOutlineXCircle
+  HiOutlineXCircle,
+  HiOutlineBell
 } from 'react-icons/hi';
 
 interface PagoModalProps {
@@ -42,7 +45,8 @@ function PagoModal({ isOpen, onClose, venta, onSubmit }: PagoModalProps) {
     descripcion: '',
     fecha: new Date().toISOString().split('T')[0],
     medioPagoId: '',
-    numeroComprobante: ''
+    numeroComprobante: '',
+    tipoComprobante: ''
   });
   const [isSubmitting, setIsSubmitting] = useState(false);
 
@@ -52,7 +56,18 @@ function PagoModal({ isOpen, onClose, venta, onSubmit }: PagoModalProps) {
     { id: '2', nombre: 'Transferencia Bancaria' },
     { id: '3', nombre: 'Cheque' },
     { id: '4', nombre: 'Tarjeta de Débito' },
-    { id: '5', nombre: 'Tarjeta de Crédito' }
+    { id: '5', nombre: 'Tarjeta de Crédito' },
+    { id: '6', nombre: 'Mercado Pago' }
+  ];
+
+  const tiposComprobante = [
+    'Recibo',
+    'Factura A',
+    'Factura B',
+    'Factura C',
+    'Nota de Crédito',
+    'Comprobante de Transferencia',
+    'Otro'
   ];
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -68,6 +83,7 @@ function PagoModal({ isOpen, onClose, venta, onSubmit }: PagoModalProps) {
         moneda: venta.moneda,
         fecha: new Date(formData.fecha),
         numeroComprobante: formData.numeroComprobante,
+        tipoComprobante: formData.tipoComprobante,
         clienteId: venta.cliente.id,
         pedidoId: venta.id,
         medioPagoId: formData.medioPagoId
@@ -87,25 +103,29 @@ function PagoModal({ isOpen, onClose, venta, onSubmit }: PagoModalProps) {
       isOpen={isOpen}
       onClose={onClose}
       title={`Registrar Pago - ${venta?.numero}`}
-      size="md"
+      size="lg"
     >
-      <form onSubmit={handleSubmit} className="space-y-4">
-        <div className="bg-gray-50 p-4 rounded-lg">
+      <form onSubmit={handleSubmit} className="space-y-6">
+        {/* Resumen de la venta */}
+        <div className="bg-blue-50 p-4 rounded-lg border border-blue-200">
+          <h4 className="font-medium text-blue-900 mb-3">Resumen de la Venta</h4>
           <div className="grid grid-cols-2 gap-4 text-sm">
             <div>
-              <span className="font-medium text-gray-700">Cliente:</span>
-              <p className="text-gray-900">{venta?.cliente.nombre}</p>
+              <span className="font-medium text-blue-700">Cliente:</span>
+              <p className="text-blue-900">{venta?.cliente.nombre}</p>
             </div>
             <div>
-              <span className="font-medium text-gray-700">Total Obra:</span>
-              <p className="text-gray-900">{CurrencyUtils.formatAmount(venta?.total, venta?.moneda)}</p>
+              <span className="font-medium text-blue-700">Total:</span>
+              <p className="text-blue-900">{CurrencyUtils.formatAmount(venta?.total, venta?.moneda)}</p>
             </div>
             <div>
-              <span className="font-medium text-gray-700">Ya Cobrado:</span>
-              <p className="text-gray-900">{CurrencyUtils.formatAmount(venta?.totalCobrado, venta?.moneda)}</p>
+              <span className="font-medium text-blue-700">Ya Cobrado:</span>
+              <p className="text-green-700 font-medium">
+                {CurrencyUtils.formatAmount(venta?.totalCobrado, venta?.moneda)}
+              </p>
             </div>
             <div>
-              <span className="font-medium text-gray-700">Saldo Pendiente:</span>
+              <span className="font-medium text-blue-700">Saldo Pendiente:</span>
               <p className="text-lg font-bold text-red-600">
                 {CurrencyUtils.formatAmount(venta?.saldoPendiente, venta?.moneda)}
               </p>
@@ -145,13 +165,24 @@ function PagoModal({ isOpen, onClose, venta, onSubmit }: PagoModalProps) {
             required
           />
 
-          <Input
-            label="Número de Comprobante"
-            value={formData.numeroComprobante}
-            onChange={(e) => setFormData(prev => ({ ...prev, numeroComprobante: e.target.value }))}
-            placeholder="Número de recibo/factura"
-          />
+          <Select
+            label="Tipo de Comprobante"
+            value={formData.tipoComprobante}
+            onChange={(e) => setFormData(prev => ({ ...prev, tipoComprobante: e.target.value }))}
+          >
+            <option value="">Seleccionar tipo</option>
+            {tiposComprobante.map(tipo => (
+              <option key={tipo} value={tipo}>{tipo}</option>
+            ))}
+          </Select>
         </div>
+
+        <Input
+          label="Número de Comprobante"
+          value={formData.numeroComprobante}
+          onChange={(e) => setFormData(prev => ({ ...prev, numeroComprobante: e.target.value }))}
+          placeholder="Número de recibo, factura, etc."
+        />
 
         <Input
           label="Concepto"
@@ -162,7 +193,7 @@ function PagoModal({ isOpen, onClose, venta, onSubmit }: PagoModalProps) {
 
         <div>
           <label className="block text-sm font-medium text-gray-700 mb-1">
-            Descripción
+            Observaciones
           </label>
           <textarea
             value={formData.descripcion}
@@ -178,6 +209,7 @@ function PagoModal({ isOpen, onClose, venta, onSubmit }: PagoModalProps) {
             Cancelar
           </Button>
           <Button type="submit" loading={isSubmitting}>
+            <HiOutlineCash className="h-4 w-4 mr-2" />
             Registrar Pago
           </Button>
         </div>
@@ -191,7 +223,6 @@ export default function VentasPage() {
   const [estadoFilter, setEstadoFilter] = useState('');
   const [selectedVenta, setSelectedVenta] = useState<any>(null);
   const [isPagoModalOpen, setIsPagoModalOpen] = useState(false);
-  const [isDetailModalOpen, setIsDetailModalOpen] = useState(false);
 
   const { ventas, loading, error, updateEstado, refetch } = useVentas({
     search: search.length >= 2 ? search : undefined,
@@ -199,6 +230,13 @@ export default function VentasPage() {
   });
 
   const { createTransaccion } = useTransacciones();
+  const { 
+    ventasVencidas, 
+    ventasProximasAVencer, 
+    ventasSinPagos, 
+    totalAlertas,
+    loading: alertasLoading 
+  } = useAlertasCobros();
 
   const handleEstadoChange = async (venta: any, nuevoEstado: string) => {
     if (confirm(`¿Cambiar estado a "${ESTADOS_PEDIDO[nuevoEstado as keyof typeof ESTADOS_PEDIDO]?.label}"?`)) {
@@ -217,14 +255,8 @@ export default function VentasPage() {
     setIsPagoModalOpen(true);
   };
 
-  const openDetailModal = (venta: any) => {
-    setSelectedVenta(venta);
-    setIsDetailModalOpen(true);
-  };
-
   const closeModals = () => {
     setIsPagoModalOpen(false);
-    setIsDetailModalOpen(false);
     setSelectedVenta(null);
   };
 
@@ -236,7 +268,8 @@ export default function VentasPage() {
     entregados: ventas.filter(v => v.estado === 'ENTREGADO').length,
     cobrados: ventas.filter(v => v.estado === 'COBRADO').length,
     montoTotal: ventas.reduce((acc, v) => acc + Number(v.total), 0),
-    saldoPendiente: ventas.reduce((acc, v) => acc + Number(v.saldoPendiente), 0)
+    saldoPendiente: ventas.reduce((acc, v) => acc + Number(v.saldoPendiente), 0),
+    ventasConSaldo: ventas.filter(v => Number(v.saldoPendiente) > 0).length
   };
 
   const getEstadoIcon = (estado: string) => {
@@ -273,14 +306,47 @@ export default function VentasPage() {
           <h1 className="text-2xl font-bold text-gray-900">Ventas y Pedidos</h1>
           <p className="text-gray-600">Gestiona el estado y seguimiento de tus ventas</p>
         </div>
-        <Button onClick={() => window.location.href = '/presupuestos'}>
-          <HiOutlinePlus className="h-4 w-4 mr-2" />
-          Nueva Venta
-        </Button>
+        <Link href="/ventas/nueva">
+          <Button>
+            <HiOutlinePlus className="h-4 w-4 mr-2" />
+            Nueva Venta
+          </Button>
+        </Link>
       </div>
 
+      {/* Alertas de cobros */}
+      {!alertasLoading && totalAlertas > 0 && (
+        <div className="bg-yellow-50 border-l-4 border-yellow-400 p-4">
+          <div className="flex">
+            <div className="flex-shrink-0">
+              <HiOutlineExclamationCircle className="h-5 w-5 text-yellow-400" />
+            </div>
+            <div className="ml-3">
+              <p className="text-sm text-yellow-700">
+                <span className="font-medium">Alertas de cobros:</span>
+                {ventasVencidas.length > 0 && (
+                  <span className="ml-2">
+                    {ventasVencidas.length} venta(s) vencida(s)
+                  </span>
+                )}
+                {ventasProximasAVencer.length > 0 && (
+                  <span className="ml-2">
+                    {ventasProximasAVencer.length} próxima(s) a vencer
+                  </span>
+                )}
+                {ventasSinPagos.length > 0 && (
+                  <span className="ml-2">
+                    {ventasSinPagos.length} sin pagos
+                  </span>
+                )}
+              </p>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Estadísticas */}
-      <div className="grid grid-cols-1 md:grid-cols-4 lg:grid-cols-7 gap-4">
+      <div className="grid grid-cols-1 md:grid-cols-4 lg:grid-cols-8 gap-4">
         <Card>
           <CardContent className="p-4">
             <div className="flex items-center">
@@ -362,6 +428,18 @@ export default function VentasPage() {
             </div>
           </CardContent>
         </Card>
+
+        <Card>
+          <CardContent className="p-4">
+            <div className="flex items-center">
+              <HiOutlineExclamationCircle className="h-6 w-6 text-orange-600" />
+              <div className="ml-3">
+                <p className="text-xs font-medium text-gray-500">Con Saldo</p>
+                <p className="text-lg font-bold text-orange-600">{stats.ventasConSaldo}</p>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
       </div>
 
       {/* Filtros */}
@@ -428,7 +506,7 @@ export default function VentasPage() {
                   <TableHeaderCell>Cliente</TableHeaderCell>
                   <TableHeaderCell>Total / Saldo</TableHeaderCell>
                   <TableHeaderCell>Estado</TableHeaderCell>
-                  <TableHeaderCell>Avance</TableHeaderCell>
+                  <TableHeaderCell>Cobros</TableHeaderCell>
                   <TableHeaderCell>Entrega</TableHeaderCell>
                   <TableHeaderCell>Acciones</TableHeaderCell>
                 </TableRow>
@@ -492,18 +570,23 @@ export default function VentasPage() {
                         </div>
                       </TableCell>
                       <TableCell>
-                      <div className="w-full">
-  <div className="flex justify-between text-xs text-gray-600 mb-1">
-    <span>Avance</span>
-    <span>{Number(venta.porcentajeAvance) || 0}%</span>
-  </div>
-  <div className="w-full bg-gray-200 rounded-full h-2">
-    <div
-      className={`h-2 rounded-full ${getAvanceColor(Number(venta.porcentajeAvance) || 0)}`}
-      style={{ width: `${Number(venta.porcentajeAvance) || 0}%` }}
-    />
-  </div>
-</div>
+                        <div className="w-full">
+                          <div className="flex justify-between text-xs text-gray-600 mb-1">
+                            <span>Progreso</span>
+                            <span>{porcentajeCobrado.toFixed(0)}%</span>
+                          </div>
+                          <div className="w-full bg-gray-200 rounded-full h-2">
+                            <div
+                              className={`h-2 rounded-full ${
+                                porcentajeCobrado === 100 ? 'bg-green-500' :
+                                porcentajeCobrado >= 75 ? 'bg-blue-500' :
+                                porcentajeCobrado >= 50 ? 'bg-yellow-500' :
+                                'bg-red-500'
+                              }`}
+                              style={{ width: `${Math.min(100, porcentajeCobrado)}%` }}
+                            />
+                          </div>
+                        </div>
                       </TableCell>
                       <TableCell>
                         {venta.fechaEntrega ? (
@@ -523,13 +606,11 @@ export default function VentasPage() {
                       </TableCell>
                       <TableCell>
                         <div className="flex items-center space-x-1">
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            onClick={() => openDetailModal(venta)}
-                          >
-                            <HiOutlineEye className="h-4 w-4" />
-                          </Button>
+                          <Link href={`/ventas/${venta.id}`}>
+                            <Button variant="ghost" size="sm">
+                              <HiOutlineEye className="h-4 w-4" />
+                            </Button>
+                          </Link>
                           {venta.saldoPendiente > 0 && (
                             <Button
                               variant="ghost"
@@ -540,15 +621,6 @@ export default function VentasPage() {
                               <HiOutlineCash className="h-4 w-4" />
                             </Button>
                           )}
-                          <Select
-                            value={venta.estado}
-                            onChange={(e) => handleEstadoChange(venta, e.target.value)}
-                            className="text-xs"
-                          >
-                            {Object.entries(ESTADOS_PEDIDO).map(([key, value]) => (
-                              <option key={key} value={key}>{value.label}</option>
-                            ))}
-                          </Select>
                         </div>
                       </TableCell>
                     </TableRow>
@@ -568,59 +640,6 @@ export default function VentasPage() {
           venta={selectedVenta}
           onSubmit={handleRegistrarPago}
         />
-      )}
-
-      {/* Modal de detalle */}
-      {selectedVenta && (
-        <Modal
-          isOpen={isDetailModalOpen}
-          onClose={closeModals}
-          title={`Detalle: ${selectedVenta.numero}`}
-          size="lg"
-        >
-          <div className="space-y-6">
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <div>
-                <label className="block text-sm font-medium text-gray-700">Cliente</label>
-                <p className="mt-1 text-sm text-gray-900">{selectedVenta.cliente.nombre}</p>
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700">Estado</label>
-                <span className={`inline-flex items-center px-2 py-1 rounded-full text-xs font-medium ${
-                  ESTADOS_PEDIDO[selectedVenta.estado as keyof typeof ESTADOS_PEDIDO]?.color === 'green' ? 'bg-green-100 text-green-800' : 'bg-blue-100 text-blue-800'
-                }`}>
-                  {ESTADOS_PEDIDO[selectedVenta.estado as keyof typeof ESTADOS_PEDIDO]?.label}
-                </span>
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700">Total</label>
-                <p className="mt-1 text-lg font-bold text-gray-900">
-                  {CurrencyUtils.formatAmount(selectedVenta.total, selectedVenta.moneda)}
-                </p>
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700">Saldo Pendiente</label>
-                <p className="mt-1 text-lg font-bold text-red-600">
-                  {CurrencyUtils.formatAmount(selectedVenta.saldoPendiente, selectedVenta.moneda)}
-                </p>
-              </div>
-            </div>
-
-            <div className="flex justify-end space-x-3 pt-6 border-t">
-              <Button variant="outline" onClick={closeModals}>
-                Cerrar
-              </Button>
-              {selectedVenta.saldoPendiente > 0 && (
-                <Button onClick={() => {
-                  closeModals();
-                  openPagoModal(selectedVenta);
-                }}>
-                  Registrar Pago
-                </Button>
-              )}
-            </div>
-          </div>
-        </Modal>
       )}
     </div>
   );

@@ -5,6 +5,8 @@ import { TransaccionFormData } from '@/lib/validations/transaccion';
 import { api } from '@/lib/utils/http';
 
 interface Transaccion {
+  tipoComprobante: any;
+  numeroComprobante: any;
   id: string;
   numero: string;
   tipo: string;
@@ -107,4 +109,3 @@ export function useTransacciones(params: UseTransaccionesParams = {}) {
     createTransaccion
   };
 }
-

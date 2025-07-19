@@ -1,5 +1,18 @@
-// src/lib/validations/venta.ts - CORREGIDO
+// src/lib/validations/venta.ts - CORREGIDO PARA MANEJAR FECHAS
 import { z } from 'zod';
+
+// Helper para transformar strings de fecha a Date objects (igual que en presupuestos)
+const dateTransform = z.string().or(z.date()).transform((value) => {
+  if (value instanceof Date) return value;
+  if (typeof value === 'string') {
+    const date = new Date(value);
+    if (isNaN(date.getTime())) {
+      throw new Error('Fecha inválida');
+    }
+    return date;
+  }
+  throw new Error('Formato de fecha inválido');
+});
 
 export const itemVentaSchema = z.object({
   descripcion: z.string()
@@ -39,8 +52,8 @@ const ventaBaseSchema = z.object({
     .uuid("ID de presupuesto inválido")
     .optional(),
   
-  fechaEntrega: z.date()
-    .optional(),
+  // CORREGIDO: Usar dateTransform para manejar strings y Date objects
+  fechaEntrega: dateTransform.optional(),
   
   prioridad: z.enum(['BAJA', 'NORMAL', 'ALTA', 'URGENTE'])
     .default('NORMAL'),

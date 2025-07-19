@@ -1,9 +1,10 @@
-// src/app/api/ventas/route.ts - ACTUALIZADO PARA MANEJAR ITEMS
+// src/app/api/ventas/route.ts - VERSIÓN MEJORADA Y PROFESIONALIZADA
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/db/prisma';
 import { ventaSchema } from '@/lib/validations/venta';
 import { verifyCognitoAuth } from '@/lib/auth/cognito-verify';
 import { CalculationUtils } from '@/lib/utils/calculations';
+import { ZodError } from 'zod';
 
 // GET - Listar ventas/pedidos
 export async function GET(req: NextRequest) {
@@ -68,6 +69,8 @@ export async function GET(req: NextRequest) {
       prisma.pedido.count({ where })
     ]);
 
+    console.log(`✅ Ventas fetched successfully: ${pedidos.length} (total: ${total})`);
+
     return NextResponse.json({
       data: pedidos,
       pagination: {
@@ -78,7 +81,7 @@ export async function GET(req: NextRequest) {
       }
     });
   } catch (error: any) {
-    console.error('Error al obtener ventas:', error);
+    console.error('❌ Error al obtener ventas:', error);
     
     if (error.message.includes('Token') || error.message.includes('autenticación')) {
       return NextResponse.json(
@@ -100,30 +103,87 @@ export async function POST(req: NextRequest) {
     const user = await verifyCognitoAuth(req);
     
     const body = await req.json();
-    console.log('📝 Datos recibidos para crear venta:', body);
+    console.log('📝 Datos recibidos para crear venta:', {
+      clienteId: body.clienteId,
+      presupuestoId: body.presupuestoId || 'ninguno',
+      fechaEntrega: body.fechaEntrega,
+      tipoVenta: body.presupuestoId ? 'desde presupuesto' : 'directa',
+      itemsCount: body.items?.length || 0
+    });
     
-    const validatedData = ventaSchema.parse(body);
+    // Validar datos con el schema corregido
+    let validatedData;
+    try {
+      validatedData = ventaSchema.parse(body);
+      console.log('✅ Datos validados exitosamente');
+    } catch (validationError) {
+      if (validationError instanceof ZodError) {
+        console.error('❌ Error de validación:', validationError.errors);
+        return NextResponse.json(
+          { 
+            error: 'Datos inválidos', 
+            details: validationError.errors.map(err => ({
+              field: err.path.join('.'),
+              message: err.message,
+              received: err.code === 'invalid_type' ? `Received: ${(err as any).received}, Expected: ${(err as any).expected}` : undefined
+            }))
+          },
+          { status: 400 }
+        );
+      }
+      throw validationError;
+    }
     
-    // Generar número único
+    // Generar número único para la venta
     const count = await prisma.pedido.count();
     const numero = `VEN-${new Date().getFullYear()}-${String(count + 1).padStart(3, '0')}`;
+    console.log('🔢 Número generado para venta:', numero);
     
     let subtotal = 0;
     let total = 0;
     let descuentoTotal = 0;
     let impuestosTotal = 0;
 
-    // Si viene de presupuesto, obtener datos
+    // CASO 1: Venta desde presupuesto
     if (validatedData.presupuestoId) {
-      console.log('🔄 Creando venta desde presupuesto:', validatedData.presupuestoId);
+      console.log('🔄 Procesando venta desde presupuesto:', validatedData.presupuestoId);
       
       const presupuestoData = await prisma.presupuesto.findUnique({
         where: { id: validatedData.presupuestoId },
-        include: { items: true }
+        include: { 
+          items: true,
+          cliente: { select: { nombre: true } }
+        }
       });
 
       if (!presupuestoData) {
-        throw new Error('Presupuesto no encontrado');
+        console.error('❌ Presupuesto no encontrado:', validatedData.presupuestoId);
+        return NextResponse.json(
+          { error: 'Presupuesto no encontrado' },
+          { status: 404 }
+        );
+      }
+
+      // Verificar que el presupuesto esté en estado válido para conversión
+      if (!['PENDIENTE', 'ENVIADO', 'APROBADO'].includes(presupuestoData.estado)) {
+        console.error('❌ Estado de presupuesto inválido para conversión:', presupuestoData.estado);
+        return NextResponse.json(
+          { error: `No se puede convertir presupuesto en estado: ${presupuestoData.estado}` },
+          { status: 400 }
+        );
+      }
+
+      // Verificar que no esté ya convertido
+      const existingPedido = await prisma.pedido.findFirst({
+        where: { presupuestoId: validatedData.presupuestoId }
+      });
+
+      if (existingPedido) {
+        console.error('❌ Presupuesto ya convertido:', existingPedido.numero);
+        return NextResponse.json(
+          { error: `Este presupuesto ya fue convertido a la venta ${existingPedido.numero}` },
+          { status: 400 }
+        );
       }
 
       subtotal = Number(presupuestoData.subtotal);
@@ -131,11 +191,17 @@ export async function POST(req: NextRequest) {
       impuestosTotal = Number(presupuestoData.impuestos) || 0;
       total = Number(presupuestoData.total);
 
-      console.log(`💰 Totales desde presupuesto: Subtotal: ${subtotal}, Total: ${total}`);
+      console.log(`💰 Totales desde presupuesto "${presupuestoData.numero}":`, {
+        subtotal,
+        descuentoTotal,
+        impuestosTotal,
+        total,
+        itemsCount: presupuestoData.items.length
+      });
     } 
-    // Si es venta directa, calcular totales desde items
+    // CASO 2: Venta directa con items
     else if (validatedData.items && validatedData.items.length > 0) {
-      console.log('🧮 Calculando totales desde items:', validatedData.items.length);
+      console.log('🧮 Procesando venta directa con', validatedData.items.length, 'items');
       
       const totales = CalculationUtils.calculateOrderTotals(
         validatedData.items,
@@ -148,14 +214,20 @@ export async function POST(req: NextRequest) {
       impuestosTotal = totales.impuestos;
       total = totales.total;
 
-      console.log(`💰 Totales calculados: Subtotal: ${subtotal}, Total: ${total}`);
+      console.log(`💰 Totales calculados para venta directa:`, totales);
     } else {
-      throw new Error('Se requieren items para venta directa');
+      console.error('❌ Venta sin presupuesto ni items');
+      return NextResponse.json(
+        { error: 'Se requiere un presupuesto o items para crear la venta' },
+        { status: 400 }
+      );
     }
 
-    // Crear la venta en una transacción
+    // Crear la venta en una transacción de base de datos
     const pedido = await prisma.$transaction(async (tx) => {
-      // Crear el pedido
+      console.log('🔄 Iniciando transacción de base de datos...');
+      
+      // Crear el pedido principal
       const nuevoPedido = await tx.pedido.create({
         data: {
           numero,
@@ -176,14 +248,16 @@ export async function POST(req: NextRequest) {
           userId: user.id
         },
         include: {
-          cliente: true,
-          presupuesto: true
+          cliente: { select: { nombre: true } },
+          presupuesto: { select: { numero: true } }
         }
       });
 
+      console.log('✅ Pedido creado en BD:', nuevoPedido.id);
+
       // Si es venta directa, crear los items del pedido
       if (validatedData.items && validatedData.items.length > 0 && !validatedData.presupuestoId) {
-        console.log('📦 Creando items de pedido...');
+        console.log('📦 Creando', validatedData.items.length, 'items de pedido...');
         
         for (let i = 0; i < validatedData.items.length; i++) {
           const item = validatedData.items[i];
@@ -206,16 +280,37 @@ export async function POST(req: NextRequest) {
             }
           });
         }
+        console.log('✅ Items de pedido creados exitosamente');
+      }
+
+      // Si viene de presupuesto, actualizar el estado del presupuesto
+      if (validatedData.presupuestoId) {
+        await tx.presupuesto.update({
+          where: { id: validatedData.presupuestoId },
+          data: { estado: 'CONVERTIDO' }
+        });
+        console.log('✅ Estado de presupuesto actualizado a CONVERTIDO');
       }
 
       return nuevoPedido;
     });
     
-    console.log('✅ Venta creada exitosamente:', pedido.id);
+    console.log('🎉 Venta creada exitosamente:', {
+      id: pedido.id,
+      numero: pedido.numero,
+      cliente: pedido.cliente.nombre,
+      total: pedido.total,
+      origenPresupuesto: pedido.presupuesto?.numero || 'Venta directa',
+      estado: 'PENDIENTE'
+    });
     
     return NextResponse.json(pedido, { status: 201 });
   } catch (error: any) {
-    console.error('❌ Error al crear venta:', error);
+    console.error('❌ Error crítico al crear venta:', {
+      message: error.message,
+      stack: error.stack?.split('\n').slice(0, 5).join('\n'),
+      type: error.constructor.name
+    });
     
     if (error.message.includes('Token') || error.message.includes('autenticación')) {
       return NextResponse.json(
@@ -224,15 +319,26 @@ export async function POST(req: NextRequest) {
       );
     }
     
-    if (error.errors) {
+    // Errores de base de datos
+    if (error.code === 'P2002') {
       return NextResponse.json(
-        { error: 'Datos inválidos', details: error.errors },
+        { error: 'Ya existe una venta con ese número' },
+        { status: 409 }
+      );
+    }
+    
+    if (error.code === 'P2003') {
+      return NextResponse.json(
+        { error: 'Referencia inválida (cliente o presupuesto no encontrado)' },
         { status: 400 }
       );
     }
     
     return NextResponse.json(
-      { error: error.message || 'Error al crear venta' },
+      { 
+        error: 'Error interno del servidor al crear la venta',
+        message: process.env.NODE_ENV === 'development' ? error.message : undefined
+      },
       { status: 500 }
     );
   }

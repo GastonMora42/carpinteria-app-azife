@@ -1,75 +1,9 @@
-// src/app/api/presupuestos/route.ts - ACTUALIZADO PARA NÚMERO MANUAL
+// src/app/api/presupuestos/route.ts - ACTUALIZACIÓN PARA SOPORTAR FILTRO disponibleParaVenta
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/db/prisma';
 import { presupuestoSchema } from '@/lib/validations/presupuesto';
 import { verifyCognitoAuth } from '@/lib/auth/cognito-verify';
 import { CalculationUtils } from '@/lib/utils/calculations';
-
-// Función para generar número único de presupuesto
-async function generatePresupuestoNumber(): Promise<string> {
-  const year = new Date().getFullYear();
-  const maxRetries = 5;
-  
-  for (let retry = 0; retry < maxRetries; retry++) {
-    try {
-      // Obtener el último número del año actual
-      const lastPresupuesto = await prisma.presupuesto.findFirst({
-        where: {
-          numero: {
-            startsWith: `PRES-${year}-`
-          }
-        },
-        orderBy: {
-          numero: 'desc'
-        },
-        select: {
-          numero: true
-        }
-      });
-
-      let nextNumber = 1;
-      
-      if (lastPresupuesto) {
-        // Extraer el número del formato PRES-YYYY-XXX
-        const match = lastPresupuesto.numero.match(/PRES-\d{4}-(\d+)/);
-        if (match) {
-          nextNumber = parseInt(match[1]) + 1;
-        }
-      }
-
-      const numero = `PRES-${year}-${String(nextNumber).padStart(3, '0')}`;
-      
-      // Verificar que no existe (por si acaso)
-      const existing = await prisma.presupuesto.findUnique({
-        where: { numero },
-        select: { id: true }
-      });
-      
-      if (!existing) {
-        return numero;
-      }
-      
-      // Si existe, incrementar y reintentar
-      nextNumber++;
-    } catch (error) {
-      console.error(`Error generating presupuesto number (retry ${retry + 1}):`, error);
-      if (retry === maxRetries - 1) {
-        throw new Error('No se pudo generar número de presupuesto único');
-      }
-    }
-  }
-  
-  throw new Error('No se pudo generar número de presupuesto después de varios intentos');
-}
-
-// Función para validar que un número manual no esté en uso
-async function validateUniqueNumber(numero: string): Promise<boolean> {
-  const existing = await prisma.presupuesto.findUnique({
-    where: { numero },
-    select: { id: true }
-  });
-  return !existing;
-}
 
 // GET - Listar presupuestos con filtros mejorados
 export async function GET(req: NextRequest) {
@@ -85,6 +19,7 @@ export async function GET(req: NextRequest) {
     const numero = searchParams.get('numero');
     const fechaDesde = searchParams.get('fechaDesde');
     const fechaHasta = searchParams.get('fechaHasta');
+    const disponibleParaVenta = searchParams.get('disponibleParaVenta') === 'true'; // NUEVO FILTRO
     
     const skip = (page - 1) * limit;
     
@@ -97,6 +32,15 @@ export async function GET(req: NextRequest) {
     
     if (clienteId) {
       where.clienteId = clienteId;
+    }
+    
+    // NUEVO: Filtro para presupuestos disponibles para venta
+    if (disponibleParaVenta) {
+      where.estado = 'APROBADO'; // Solo aprobados
+      where.pedido = null; // No convertidos
+      where.fechaValidez = {
+        gte: new Date() // No vencidos
+      };
     }
     
     // Búsqueda específica por número de presupuesto
@@ -129,7 +73,7 @@ export async function GET(req: NextRequest) {
     }
 
     console.log('🔍 Searching presupuestos with filters:', {
-      page, limit, estado, clienteId, numero, search, fechaDesde, fechaHasta
+      page, limit, estado, clienteId, numero, search, fechaDesde, fechaHasta, disponibleParaVenta
     });
 
     const [presupuestos, total] = await Promise.all([
@@ -145,6 +89,14 @@ export async function GET(req: NextRequest) {
           items: {
             orderBy: { orden: 'asc' }
           },
+          // NUEVO: Incluir información del pedido para saber si fue convertido
+          pedido: {
+            select: { 
+              id: true, 
+              numero: true, 
+              estado: true 
+            }
+          },
           _count: {
             select: { items: true }
           }
@@ -158,8 +110,39 @@ export async function GET(req: NextRequest) {
 
     console.log(`✅ Found ${presupuestos.length} presupuestos (total: ${total})`);
 
+    // NUEVO: Enriquecer datos con información de disponibilidad para venta
+    const presupuestosEnriquecidos = presupuestos.map(presupuesto => {
+      const fechaVencimiento = new Date(presupuesto.fechaValidez);
+      const hoy = new Date();
+      const diasRestantes = Math.ceil((fechaVencimiento.getTime() - hoy.getTime()) / (1000 * 60 * 60 * 24));
+      
+      return {
+        ...presupuesto,
+        // Información adicional para la UI
+        diasRestantes,
+        vencido: diasRestantes <= 0,
+        urgente: diasRestantes > 0 && diasRestantes <= 7,
+        puedeConvertirse: presupuesto.estado === 'APROBADO' && !presupuesto.pedido && diasRestantes > 0,
+        yaConvertido: !!presupuesto.pedido
+      };
+    });
+
+    // NUEVO: Calcular estadísticas específicas para disponibles para venta
+    let estadisticas = {};
+    if (disponibleParaVenta) {
+      const disponibles = presupuestosEnriquecidos.filter(p => p.puedeConvertirse);
+      estadisticas = {
+        total: disponibles.length,
+        montoTotal: disponibles.reduce((acc, p) => acc + Number(p.total), 0),
+        urgentes: disponibles.filter(p => p.urgente).length,
+        promedioDiasVencimiento: disponibles.length > 0 
+          ? Math.round(disponibles.reduce((acc, p) => acc + p.diasRestantes, 0) / disponibles.length)
+          : 0
+      };
+    }
+
     return NextResponse.json({
-      data: presupuestos,
+      data: presupuestosEnriquecidos,
       pagination: {
         total,
         pages: Math.ceil(total / limit),
@@ -172,8 +155,10 @@ export async function GET(req: NextRequest) {
         numero,
         search,
         fechaDesde,
-        fechaHasta
-      }
+        fechaHasta,
+        disponibleParaVenta
+      },
+      ...(disponibleParaVenta && { estadisticas })
     });
   } catch (error: any) {
     console.error('Error al obtener presupuestos:', error);
@@ -192,7 +177,7 @@ export async function GET(req: NextRequest) {
   }
 }
 
-// POST - Crear nuevo presupuesto con número manual
+// POST - Crear nuevo presupuesto (sin cambios)
 export async function POST(req: NextRequest) {
   try {
     const user = await verifyCognitoAuth(req);
@@ -295,7 +280,6 @@ export async function POST(req: NextRequest) {
     }
     
     if (error.code === 'P2002' && error.meta?.target?.includes('numero')) {
-      // Error de número duplicado
       console.error('❌ Duplicate presupuesto number');
       return NextResponse.json(
         { error: 'El número de presupuesto ya existe. Elige otro número.' },
@@ -315,4 +299,66 @@ export async function POST(req: NextRequest) {
       { status: 500 }
     );
   }
+}
+
+// Función para generar número único de presupuesto (sin cambios)
+async function generatePresupuestoNumber(): Promise<string> {
+  const year = new Date().getFullYear();
+  const maxRetries = 5;
+  
+  for (let retry = 0; retry < maxRetries; retry++) {
+    try {
+      const lastPresupuesto = await prisma.presupuesto.findFirst({
+        where: {
+          numero: {
+            startsWith: `PRES-${year}-`
+          }
+        },
+        orderBy: {
+          numero: 'desc'
+        },
+        select: {
+          numero: true
+        }
+      });
+
+      let nextNumber = 1;
+      
+      if (lastPresupuesto) {
+        const match = lastPresupuesto.numero.match(/PRES-\d{4}-(\d+)/);
+        if (match) {
+          nextNumber = parseInt(match[1]) + 1;
+        }
+      }
+
+      const numero = `PRES-${year}-${String(nextNumber).padStart(3, '0')}`;
+      
+      const existing = await prisma.presupuesto.findUnique({
+        where: { numero },
+        select: { id: true }
+      });
+      
+      if (!existing) {
+        return numero;
+      }
+      
+      nextNumber++;
+    } catch (error) {
+      console.error(`Error generating presupuesto number (retry ${retry + 1}):`, error);
+      if (retry === maxRetries - 1) {
+        throw new Error('No se pudo generar número de presupuesto único');
+      }
+    }
+  }
+  
+  throw new Error('No se pudo generar número de presupuesto después de varios intentos');
+}
+
+// Función para validar que un número manual no esté en uso (sin cambios)
+async function validateUniqueNumber(numero: string): Promise<boolean> {
+  const existing = await prisma.presupuesto.findUnique({
+    where: { numero },
+    select: { id: true }
+  });
+  return !existing;
 }

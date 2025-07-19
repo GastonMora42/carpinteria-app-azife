@@ -1,4 +1,4 @@
-// src/hooks/use-ventas.ts - ACTUALIZADO
+// src/hooks/use-ventas.ts - VERSIÓN MEJORADA Y PROFESIONALIZADA
 import { useState, useEffect } from 'react';
 import { VentaFormData } from '@/lib/validations/venta';
 import { api } from '@/lib/utils/http';
@@ -72,19 +72,35 @@ export function useVentas(params: UseVentasParams = {}) {
 
   const createVenta = async (ventaData: VentaFormData): Promise<VentaWithNumbers> => {
     try {
-      console.log('➕ Creating venta:', ventaData.descripcionObra);
-      console.log('📋 Venta data:', {
-        clienteId: ventaData.clienteId,
-        presupuestoId: ventaData.presupuestoId,
-        itemsCount: ventaData.items?.length || 0,
-        total: ventaData.items?.reduce((acc: number, item: { cantidad: number; precioUnitario: number; descuento: any; }) => 
-          acc + (item.cantidad * item.precioUnitario * (1 - (item.descuento || 0) / 100)), 0
-        ) || 0
+      console.log('➕ Creating venta with data:', {
+        cliente: ventaData.clienteId,
+        presupuesto: ventaData.presupuestoId || 'ninguno',
+        tipo: ventaData.presupuestoId ? 'conversión de presupuesto' : 'venta directa',
+        items: ventaData.items?.length || 0,
+        fechaEntrega: ventaData.fechaEntrega,
+        descripcion: ventaData.descripcionObra?.substring(0, 50) + '...'
       });
       
-      const newVenta = await api.post('/api/ventas', ventaData);
+      // Preparar datos para envío
+      const dataToSend = {
+        ...ventaData,
+        // Asegurar que fechaEntrega sea string ISO si existe
+        fechaEntrega: ventaData.fechaEntrega ? ventaData.fechaEntrega.toISOString() : undefined
+      };
       
-      console.log('✅ Venta created successfully:', newVenta.id);
+      console.log('📤 Sending venta data:', {
+        ...dataToSend,
+        fechaEntrega: dataToSend.fechaEntrega || 'ninguna'
+      });
+      
+      const newVenta = await api.post('/api/ventas', dataToSend);
+      
+      console.log('✅ Venta created successfully:', {
+        id: newVenta.id,
+        numero: newVenta.numero,
+        total: newVenta.total,
+        cliente: newVenta.cliente?.nombre || 'N/A'
+      });
       
       // Convertir campos Decimal a number
       const convertedVenta = convertDecimalFields(newVenta, [
@@ -101,13 +117,28 @@ export function useVentas(params: UseVentasParams = {}) {
       return convertedVenta;
     } catch (err: any) {
       console.error('❌ Error creating venta:', err);
+      
+      // Manejo específico de errores de validación
+      if (err.message?.includes('Datos inválidos') && err.details) {
+        const validationErrors = err.details.map((detail: any) => 
+          `${detail.field}: ${detail.message}`
+        ).join(', ');
+        throw new Error(`Error de validación: ${validationErrors}`);
+      }
+      
+      // Manejo específico de errores de conversión de presupuesto
+      if (err.message?.includes('presupuesto')) {
+        throw new Error(`Error con presupuesto: ${err.message}`);
+      }
+      
+      // Error genérico
       throw new Error(err.message || 'Error al crear venta');
     }
   };
 
   const updateEstado = async (id: string, nuevoEstado: string): Promise<VentaWithNumbers> => {
     try {
-      console.log('🔄 Updating venta estado:', id, nuevoEstado);
+      console.log('🔄 Updating venta estado:', { id, nuevoEstado });
       
       const updatedVenta = await api.put(`/api/ventas/${id}`, { estado: nuevoEstado });
       
@@ -134,7 +165,7 @@ export function useVentas(params: UseVentasParams = {}) {
 
   const updateAvance = async (id: string, porcentajeAvance: number): Promise<VentaWithNumbers> => {
     try {
-      console.log('📈 Updating venta avance:', id, porcentajeAvance);
+      console.log('📈 Updating venta avance:', { id, porcentajeAvance });
       
       const updatedVenta = await api.put(`/api/ventas/${id}`, { porcentajeAvance });
       
@@ -190,12 +221,16 @@ export function useVenta(id: string | null) {
         setLoading(true);
         setError(null);
 
-        console.log('🔍 Fetching venta:', id);
+        console.log('🔍 Fetching venta details:', id);
         
         const data = await api.get(`/api/ventas/${id}`);
         
-        console.log('✅ Venta fetched successfully:', data.id);
-        console.log('📋 Items count:', data.items?.length || 0);
+        console.log('✅ Venta fetched successfully:', {
+          id: data.id,
+          numero: data.numero,
+          items: data.items?.length || 0,
+          transacciones: data.transacciones?.length || 0
+        });
         
         // Convertir campos Decimal a number
         const convertedVenta = convertDecimalFields(data, [

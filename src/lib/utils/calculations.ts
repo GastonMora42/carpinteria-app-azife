@@ -1,5 +1,6 @@
 // src/lib/utils/calculations.ts
 export class CalculationUtils {
+    static calcularFechaEntregaFromString: any;
     /**
      * Calcula el total de items aplicando descuentos
      */

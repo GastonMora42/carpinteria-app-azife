@@ -269,3 +269,21 @@ export async function POST(req: NextRequest) {
     );
   }
 }
+
+// 2. COMANDOS PARA SOLUCIONAR PROBLEMAS DE PRISMA
+// Ejecutar en la terminal del proyecto:
+
+/*
+# 1. Regenerar el cliente de Prisma
+npx prisma generate
+
+# 2. Verificar el estado de la base de datos
+npx prisma db push --preview-feature
+
+# 3. Si hay problemas con la base de datos, resetear y volver a crear
+npx prisma migrate reset --force
+npx prisma db push
+
+# 4. Verificar que todo esté funcionando
+npx prisma studio
+*/

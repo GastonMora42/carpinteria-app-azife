@@ -1,7 +1,18 @@
-// ===================================
-
-// src/lib/validations/transaccion.ts
+// src/lib/validations/transaccion.ts - CORREGIDO PARA MANEJAR FECHAS
 import { z } from 'zod';
+
+// Helper para transformar strings de fecha a Date objects
+const dateTransform = z.string().or(z.date()).transform((value) => {
+  if (value instanceof Date) return value;
+  if (typeof value === 'string') {
+    const date = new Date(value);
+    if (isNaN(date.getTime())) {
+      throw new Error('Fecha inválida');
+    }
+    return date;
+  }
+  throw new Error('Formato de fecha inválido');
+});
 
 export const transaccionSchema = z.object({
   tipo: z.enum([
@@ -35,11 +46,11 @@ export const transaccionSchema = z.object({
     .min(0.01, "La cotización debe ser mayor a 0")
     .optional(),
   
-  fecha: z.date()
-    .max(new Date(), "La fecha no puede ser futura"),
+  // CORREGIDO: Usar dateTransform para manejar strings y Date objects
+  fecha: dateTransform,
   
-  fechaVencimiento: z.date()
-    .optional(),
+  // CORREGIDO: fechaVencimiento también con transform
+  fechaVencimiento: dateTransform.optional(),
   
   numeroComprobante: z.string()
     .max(50, "El número de comprobante no puede exceder 50 caracteres")
@@ -52,19 +63,19 @@ export const transaccionSchema = z.object({
     .or(z.literal("")),
   
   clienteId: z.string()
-    .uuid("ID de cliente inválido")
+    .min(1, "ID de cliente requerido")
     .optional(),
   
   proveedorId: z.string()
-    .uuid("ID de proveedor inválido")
+    .min(1, "ID de proveedor requerido")
     .optional(),
   
   pedidoId: z.string()
-    .uuid("ID de pedido inválido")
+    .min(1, "ID de pedido requerido")
     .optional(),
   
   medioPagoId: z.string()
-    .uuid("ID de medio de pago inválido")
+    .min(1, "Medio de pago requerido")
 });
 
 export const chequeSchema = z.object({
@@ -86,10 +97,9 @@ export const chequeSchema = z.object({
     .optional()
     .or(z.literal("")),
   
-  fechaEmision: z.date(),
+  fechaEmision: dateTransform,
   
-  fechaVencimiento: z.date()
-    .min(new Date(), "La fecha de vencimiento debe ser futura"),
+  fechaVencimiento: dateTransform,
   
   monto: z.number()
     .min(0.01, "El monto debe ser mayor a 0")
@@ -99,10 +109,9 @@ export const chequeSchema = z.object({
     .default('PESOS'),
   
   clienteId: z.string()
-    .uuid("ID de cliente inválido")
+    .min(1, "ID de cliente requerido")
     .optional()
 });
 
 export type TransaccionFormData = z.infer<typeof transaccionSchema>;
 export type ChequeFormData = z.infer<typeof chequeSchema>;
-

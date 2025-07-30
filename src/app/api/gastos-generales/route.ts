@@ -10,7 +10,7 @@ const gastoGeneralSchema = z.object({
   subcategoria: z.string().optional(),
   monto: z.number().min(0.01, "El monto debe ser mayor a 0"),
   moneda: z.enum(['PESOS', 'DOLARES']).default('PESOS'),
-  fecha: z.string().transform(str => new Date(str)),
+  fecha: z.date().or(z.string().transform(str => new Date(str))),
   periodo: z.string().optional(),
   numeroFactura: z.string().optional(),
   proveedor: z.string().optional()
@@ -22,19 +22,19 @@ export async function GET(req: NextRequest) {
     const user = await verifyCognitoAuth(req);
     
     const { searchParams } = new URL(req.url);
-    const page = parseInt(searchParams.get('page') || '1');
-    const limit = parseInt(searchParams.get('limit') || '20');
     const categoria = searchParams.get('categoria');
     const fechaDesde = searchParams.get('fechaDesde');
     const fechaHasta = searchParams.get('fechaHasta');
     const periodo = searchParams.get('periodo');
     
-    const skip = (page - 1) * limit;
-    
     const where: any = {};
     
     if (categoria) {
       where.categoria = categoria;
+    }
+    
+    if (periodo) {
+      where.periodo = periodo;
     }
     
     if (fechaDesde || fechaHasta) {
@@ -43,42 +43,28 @@ export async function GET(req: NextRequest) {
         where.fecha.gte = new Date(fechaDesde);
       }
       if (fechaHasta) {
-        where.fecha.lte = new Date(fechaHasta);
+        where.fecha.lte = new Date(fechaHasta + 'T23:59:59');
       }
     }
-    
-    if (periodo) {
-      where.periodo = periodo;
-    }
 
-    const [gastos, total] = await Promise.all([
-      prisma.gastoGeneral.findMany({
-        where,
-        include: {
-          user: {
-            select: { id: true, name: true }
-          }
-        },
-        orderBy: { fecha: 'desc' },
-        skip,
-        take: limit
-      }),
-      prisma.gastoGeneral.count({ where })
-    ]);
+    const gastos = await prisma.gastoGeneral.findMany({
+      where,
+      include: {
+        user: {
+          select: { id: true, name: true }
+        }
+      },
+      orderBy: { fecha: 'desc' }
+    });
 
     return NextResponse.json({
       data: gastos,
-      pagination: {
-        total,
-        pages: Math.ceil(total / limit),
-        page,
-        limit
-      }
+      count: gastos.length
     });
   } catch (error: any) {
-    console.error('Error al obtener gastos generales:', error);
+    console.error('❌ Error fetching gastos generales:', error);
     
-    if (error.message.includes('Token') || error.message.includes('autenticación')) {
+    if (error.message?.includes('Token') || error.message?.includes('autenticación')) {
       return NextResponse.json(
         { error: 'No autorizado' },
         { status: 401 }
@@ -102,12 +88,24 @@ export async function POST(req: NextRequest) {
     
     // Generar número único
     const count = await prisma.gastoGeneral.count();
-    const numero = `GG-${new Date().getFullYear()}-${String(count + 1).padStart(3, '0')}`;
+    const numero = `GG-${new Date().getFullYear()}-${String(count + 1).padStart(4, '0')}`;
     
-    const gastoGeneral = await prisma.gastoGeneral.create({
+    // Generar período automáticamente si no se proporciona
+    const fecha = new Date(validatedData.fecha);
+    const periodo = validatedData.periodo || `${fecha.getFullYear()}-${String(fecha.getMonth() + 1).padStart(2, '0')}`;
+    
+    const gasto = await prisma.gastoGeneral.create({
       data: {
         numero,
-        ...validatedData,
+        descripcion: validatedData.descripcion,
+        categoria: validatedData.categoria,
+        subcategoria: validatedData.subcategoria,
+        monto: validatedData.monto,
+        moneda: validatedData.moneda,
+        fecha: validatedData.fecha,
+        periodo,
+        numeroFactura: validatedData.numeroFactura,
+        proveedor: validatedData.proveedor,
         userId: user.id
       },
       include: {
@@ -117,21 +115,23 @@ export async function POST(req: NextRequest) {
       }
     });
     
-    return NextResponse.json(gastoGeneral, { status: 201 });
+    console.log('✅ Gasto general created successfully:', gasto.numero);
+    
+    return NextResponse.json(gasto, { status: 201 });
   } catch (error: any) {
-    console.error('Error al crear gasto general:', error);
+    console.error('❌ Error creating gasto general:', error);
     
-    if (error.message.includes('Token') || error.message.includes('autenticación')) {
-      return NextResponse.json(
-        { error: 'No autorizado' },
-        { status: 401 }
-      );
-    }
-    
-    if (error.errors) {
+    if (error instanceof z.ZodError) {
       return NextResponse.json(
         { error: 'Datos inválidos', details: error.errors },
         { status: 400 }
+      );
+    }
+    
+    if (error.message?.includes('Token') || error.message?.includes('autenticación')) {
+      return NextResponse.json(
+        { error: 'No autorizado' },
+        { status: 401 }
       );
     }
     

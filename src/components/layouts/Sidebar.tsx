@@ -56,7 +56,8 @@ const navigation = [
       { name: 'Transacciones', href: '/finanzas/transacciones' },
       { name: 'Cheques', href: '/finanzas/cheques' },
       { name: 'Saldos por Cobrar', href: '/finanzas/saldos' },
-      { name: 'Gastos Generales', href: '/finanzas/gastos' }
+      { name: 'Gastos Generales', href: '/finanzas/gastos' },
+      { name: 'Análisis de Márgenes', href: '/finanzas/margenes' }
     ]
   },
   { 

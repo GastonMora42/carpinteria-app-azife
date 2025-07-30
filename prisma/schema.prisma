@@ -24,6 +24,8 @@ model User {
   pedidos               Pedido[]
   presupuestos          Presupuesto[]
   transacciones         Transaccion[]
+    gastosPresupuesto    GastoPresupuesto[]
+  
 
   @@map("users")
 }
@@ -114,6 +116,8 @@ model Presupuesto {
   pedido          Pedido?
   cliente         Cliente               @relation(fields: [clienteId], references: [id])
   user            User                  @relation(fields: [userId], references: [id])
+   gastos           GastoPresupuesto[]
+  
 
   @@map("presupuestos")
 }
@@ -185,6 +189,30 @@ model Pedido {
   items           ItemPedido[]
 
   @@map("pedidos")
+}
+
+model GastoPresupuesto {
+  id               String      @id @default(uuid())
+  numero           String      @unique
+  presupuestoId    String
+  descripcion      String
+  categoria        String      // "MATERIALES", "MANO_OBRA", "TRANSPORTE", "HERRAMIENTAS", "OTROS"
+  subcategoria     String?
+  monto            Decimal     @db.Decimal(12, 2)
+  moneda           Moneda      @default(PESOS)
+  fecha            DateTime    @default(now())
+  comprobante      String?     // Número de factura/recibo
+  proveedor        String?     // Nombre del proveedor
+  notas            String?
+  userId           String      // Usuario que registró el gasto
+  createdAt        DateTime    @default(now())
+  updatedAt        DateTime    @updatedAt
+  
+  // Relaciones
+  presupuesto      Presupuesto @relation(fields: [presupuestoId], references: [id], onDelete: Cascade)
+  user             User        @relation(fields: [userId], references: [id])
+
+  @@map("gastos_presupuesto")
 }
 
 model ItemPedido {

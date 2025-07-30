@@ -67,7 +67,6 @@ const navigation = [
     submenu: [
       { name: 'Catálogo', href: '/materiales' },
       { name: 'Proveedores', href: '/materiales/proveedores' },
-      { name: 'Nuevo Material', href: '/materiales/nuevo' }
     ]
   },
 ];

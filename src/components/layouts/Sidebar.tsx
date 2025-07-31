@@ -40,6 +40,14 @@ const navigation = [
     ]
   },
   { 
+    name: 'Gastos', 
+    href: '/gastos-presupuesto', 
+    icon: HiOutlineCash,
+    submenu: [
+      { name: 'Imputar gasto', href: '/gastos-presupuesto' },
+    ]
+  },
+  { 
     name: 'Clientes', 
     href: '/clientes', 
     icon: HiOutlineUsers,

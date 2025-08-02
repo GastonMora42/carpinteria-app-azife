@@ -100,6 +100,7 @@ export async function POST(req: NextRequest) {
         descripcion: validatedData.descripcion,
         categoria: validatedData.categoria,
         subcategoria: validatedData.subcategoria,
+        medioPagoId: (validatedData as any).medioPagoId,
         monto: validatedData.monto,
         moneda: validatedData.moneda,
         fecha: validatedData.fecha,

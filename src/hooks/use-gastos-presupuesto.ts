@@ -4,7 +4,6 @@ import { api } from '@/lib/utils/http';
 import { GastoPresupuestoFormData } from '@/lib/validations/gasto-presupuesto';
 
 export interface GastoPresupuesto {
-  [x: string]: any;
   id: string;
   numero: string;
   presupuestoId: string;

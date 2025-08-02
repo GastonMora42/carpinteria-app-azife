@@ -346,8 +346,9 @@ export function GastosPresupuestoComponent({
   };
 
   // Calcular estadísticas por medio de pago
+  // Nota: 'medioPago' no existe en el tipo 'GastoPresupuesto', así que usamos 'medioPagoNombre' si existe, o 'Sin especificar'
   const gastosPorMedioPago = gastos.reduce((acc, gasto) => {
-    const medioNombre = gasto.medioPago?.nombre || 'Sin especificar';
+    const medioNombre = (gasto as any).medioPagoNombre || 'Sin especificar';
     if (!acc[medioNombre]) {
       acc[medioNombre] = { cantidad: 0, monto: 0 };
     }
@@ -573,7 +574,10 @@ export function GastosPresupuestoComponent({
                       <div className="flex items-center">
                         <HiOutlineCreditCard className="h-4 w-4 mr-2 text-gray-400" />
                         <span className="text-sm text-gray-900">
-                          {gasto.medioPago?.nombre || 'No especificado'}
+                          {/* Corregido: acceso seguro a medioPago si existe, de lo contrario mostrar 'No especificado' */}
+                          {'medioPago' in gasto && (gasto as any).medioPago?.nombre
+                            ? (gasto as any).medioPago.nombre
+                            : 'No especificado'}
                         </span>
                       </div>
                     </TableCell>

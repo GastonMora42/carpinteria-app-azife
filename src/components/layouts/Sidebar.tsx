@@ -61,6 +61,7 @@ const navigation = [
     icon: HiOutlineCash,
     submenu: [
       { name: 'Resumen', href: '/finanzas' },
+      { name: 'Estado Financiero', href: '/finanzas/estado-financiero' },
       { name: 'Transacciones', href: '/finanzas/transacciones' },
       { name: 'Cheques', href: '/finanzas/cheques' },
       { name: 'Saldos por Cobrar', href: '/finanzas/saldos' },

@@ -204,12 +204,14 @@ model GastoPresupuesto {
   comprobante      String?     // Número de factura/recibo
   proveedor        String?     // Nombre del proveedor
   notas            String?
+  medioPagoId      String      // NUEVO: Medio de pago utilizado
   userId           String      // Usuario que registró el gasto
   createdAt        DateTime    @default(now())
   updatedAt        DateTime    @updatedAt
   
   // Relaciones
   presupuesto      Presupuesto @relation(fields: [presupuestoId], references: [id], onDelete: Cascade)
+  medioPago        MedioPago   @relation(fields: [medioPagoId], references: [id]) // NUEVO
   user             User        @relation(fields: [userId], references: [id])
 
   @@map("gastos_presupuesto")
@@ -254,13 +256,19 @@ model MaterialPedido {
 }
 
 model MedioPago {
-  id            String        @id @default(uuid())
-  nombre        String        @unique
-  descripcion   String?
-  activo        Boolean       @default(true)
-  createdAt     DateTime      @default(now())
-  updatedAt     DateTime      @updatedAt
-  transacciones Transaccion[]
+  id                  String                @id @default(uuid())
+  nombre              String                @unique
+  descripcion         String?
+  activo              Boolean               @default(true)
+  createdAt           DateTime              @default(now())
+  updatedAt           DateTime              @updatedAt
+  
+  // Relaciones existentes
+  transacciones       Transaccion[]
+  
+  // Nuevas relaciones
+  gastosPresupuesto   GastoPresupuesto[]    // NUEVO
+  gastosGenerales     GastoGeneral[]        // NUEVO
 
   @@map("medios_pago")
 }
@@ -319,21 +327,25 @@ model Cheque {
 }
 
 model GastoGeneral {
-  id            String   @id @default(uuid())
-  numero        String   @unique
+  id            String    @id @default(uuid())
+  numero        String    @unique
   descripcion   String
   categoria     String
   subcategoria  String?
-  monto         Decimal  @db.Decimal(12, 2)
-  moneda        Moneda   @default(PESOS)
-  fecha         DateTime @default(now())
+  monto         Decimal   @db.Decimal(12, 2)
+  moneda        Moneda    @default(PESOS)
+  fecha         DateTime  @default(now())
   periodo       String?
   numeroFactura String?
   proveedor     String?
+  medioPagoId   String    // NUEVO: Medio de pago utilizado
   userId        String
-  createdAt     DateTime @default(now())
-  updatedAt     DateTime @updatedAt
-  user          User     @relation(fields: [userId], references: [id])
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+  
+  // Relaciones
+  medioPago     MedioPago @relation(fields: [medioPagoId], references: [id]) // NUEVO
+  user          User      @relation(fields: [userId], references: [id])
 
   @@map("gastos_generales")
 }

@@ -130,6 +130,7 @@ export async function POST(
     // Crear gasto
     const gasto = await prisma.gastoPresupuesto.create({
       data: {
+        medioPagoId: validatedData.medioPagoId,
         numero,
         presupuestoId,
         descripcion: validatedData.descripcion,

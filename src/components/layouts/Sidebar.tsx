@@ -61,12 +61,11 @@ const navigation = [
     icon: HiOutlineCash,
     submenu: [
       { name: 'Resumen', href: '/finanzas' },
-      { name: 'Estado Financiero', href: '/finanzas/estado-financiero' },
+      { name: 'Estado Financiero', href: '/finanzas/balance' },
       { name: 'Transacciones', href: '/finanzas/transacciones' },
-      { name: 'Cheques', href: '/finanzas/cheques' },
       { name: 'Saldos por Cobrar', href: '/finanzas/saldos' },
       { name: 'Gastos Generales', href: '/finanzas/gastos' },
-      { name: 'Análisis de Márgenes', href: '/finanzas/margenes' }
+      { name: 'Cheques', href: '/finanzas/cheques' },
     ]
   },
   { 

@@ -470,9 +470,6 @@ function PagoModal({ isOpen, onClose, venta, onSubmit }: PagoModalProps) {
   );
 }
 
-// ... resto del componente igual (DetallePagoModal y PagosComponent principal)
-// El resto del código permanece igual, solo cambió PagoModal
-
 interface DetallePagoModalProps {
   isOpen: boolean;
   onClose: () => void;
@@ -619,6 +616,7 @@ export function PagosComponent({
   const [isPagoModalOpen, setIsPagoModalOpen] = useState(false);
   const [isDetalleModalOpen, setIsDetalleModalOpen] = useState(false);
   const [selectedPago, setSelectedPago] = useState<Pago | null>(null);
+  const [showBalanceDetalle, setShowBalanceDetalle] = useState(false);
 
   const porcentajeCobrado = venta.total > 0 ? (venta.totalCobrado / venta.total) * 100 : 0;
 

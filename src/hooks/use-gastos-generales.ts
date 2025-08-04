@@ -1,4 +1,4 @@
-// src/hooks/use-gastos-generales.ts
+// src/hooks/use-gastos-generales.ts - ACTUALIZADO CON MEDIOS DE PAGO
 import { useState, useEffect } from 'react';
 import { api } from '@/lib/utils/http';
 
@@ -14,6 +14,11 @@ interface GastoGeneral {
   periodo?: string;
   numeroFactura?: string;
   proveedor?: string;
+  medioPago: {
+    id: string;
+    nombre: string;
+    descripcion?: string;
+  };
   user: {
     id: string;
     name: string;
@@ -32,6 +37,25 @@ interface GastoGeneralFormData {
   periodo?: string;
   numeroFactura?: string;
   proveedor?: string;
+  medioPagoId: string; // NUEVO: Requerido
+}
+
+interface EstadisticasGastosGenerales {
+  totalGastos: number;
+  montoTotal: number;
+  gastosPorCategoria: Array<{
+    categoria: string;
+    cantidad: number;
+    monto: number;
+  }>;
+  gastosPorMedioPago: Array<{
+    medioPago: {
+      id: string;
+      nombre: string;
+    };
+    cantidad: number;
+    monto: number;
+  }>;
 }
 
 interface UseGastosGeneralesParams {
@@ -41,6 +65,7 @@ interface UseGastosGeneralesParams {
   fechaDesde?: string;
   fechaHasta?: string;
   periodo?: string;
+  medioPagoId?: string; // NUEVO: Filtro por medio de pago
 }
 
 export function useGastosGenerales(params: UseGastosGeneralesParams = {}) {
@@ -52,6 +77,12 @@ export function useGastosGenerales(params: UseGastosGeneralesParams = {}) {
     pages: 0,
     page: 1,
     limit: 20
+  });
+  const [estadisticas, setEstadisticas] = useState<EstadisticasGastosGenerales>({
+    totalGastos: 0,
+    montoTotal: 0,
+    gastosPorCategoria: [],
+    gastosPorMedioPago: []
   });
 
   const fetchGastos = async () => {
@@ -70,10 +101,20 @@ export function useGastosGenerales(params: UseGastosGeneralesParams = {}) {
 
       const data = await api.get(`/api/gastos-generales?${searchParams}`);
       
-      console.log('✅ Gastos generales fetched successfully:', data.data?.length || 0);
+      console.log('✅ Gastos generales fetched successfully:', {
+        gastos: data.data?.length || 0,
+        montoTotal: data.estadisticas?.montoTotal || 0,
+        mediosPago: data.estadisticas?.gastosPorMedioPago?.length || 0
+      });
       
       setGastos(data.data || []);
       setPagination(data.pagination || { total: 0, pages: 0, page: 1, limit: 20 });
+      setEstadisticas(data.estadisticas || {
+        totalGastos: 0,
+        montoTotal: 0,
+        gastosPorCategoria: [],
+        gastosPorMedioPago: []
+      });
     } catch (err: any) {
       console.error('❌ Error fetching gastos generales:', err);
       setError(err.message || 'Error al cargar gastos generales');
@@ -90,13 +131,25 @@ export function useGastosGenerales(params: UseGastosGeneralesParams = {}) {
 
   const createGasto = async (gastoData: GastoGeneralFormData): Promise<GastoGeneral> => {
     try {
-      console.log('➕ Creating gasto general:', gastoData.descripcion);
+      console.log('➕ Creating gasto general:', {
+        descripcion: gastoData.descripcion,
+        medioPagoId: gastoData.medioPagoId
+      });
       
       const newGasto = await api.post('/api/gastos-generales', gastoData);
       
       console.log('✅ Gasto general created successfully:', newGasto.id);
       
       setGastos(prev => [newGasto, ...prev]);
+      
+      // Actualizar estadísticas
+      setEstadisticas(prev => ({
+        totalGastos: prev.totalGastos + 1,
+        montoTotal: prev.montoTotal + gastoData.monto,
+        gastosPorCategoria: actualizarEstadisticasCategoria(prev.gastosPorCategoria, gastoData.categoria, gastoData.monto, 1),
+        gastosPorMedioPago: actualizarEstadisticasMedioPago(prev.gastosPorMedioPago, newGasto.medioPago, gastoData.monto, 1)
+      }));
+      
       return newGasto;
     } catch (err: any) {
       console.error('❌ Error creating gasto general:', err);
@@ -124,15 +177,108 @@ export function useGastosGenerales(params: UseGastosGeneralesParams = {}) {
     try {
       console.log('🗑️ Deleting gasto general:', id);
       
+      const gastoAEliminar = gastos.find(g => g.id === id);
+      
       await api.delete(`/api/gastos-generales/${id}`);
       
       console.log('✅ Gasto general deleted successfully:', id);
       
       setGastos(prev => prev.filter(g => g.id !== id));
+      
+      // Actualizar estadísticas
+      if (gastoAEliminar) {
+        setEstadisticas(prev => ({
+          totalGastos: Math.max(0, prev.totalGastos - 1),
+          montoTotal: prev.montoTotal - gastoAEliminar.monto,
+          gastosPorCategoria: actualizarEstadisticasCategoria(prev.gastosPorCategoria, gastoAEliminar.categoria, -gastoAEliminar.monto, -1),
+          gastosPorMedioPago: actualizarEstadisticasMedioPago(prev.gastosPorMedioPago, gastoAEliminar.medioPago, -gastoAEliminar.monto, -1)
+        }));
+      }
     } catch (err: any) {
       console.error('❌ Error deleting gasto general:', err);
       throw new Error(err.message || 'Error al eliminar gasto general');
     }
+  };
+
+  // NUEVAS FUNCIONES UTILITARIAS
+
+  const getGastosPorMedioPago = (medioId: string): GastoGeneral[] => {
+    return gastos.filter(gasto => gasto.medioPago.id === medioId);
+  };
+
+  const getGastosPorCategoria = (categoria: string): GastoGeneral[] => {
+    return gastos.filter(gasto => gasto.categoria === categoria);
+  };
+
+  const getMedioMasUsado = (): { medioPago: string; cantidad: number; monto: number } | null => {
+    if (estadisticas.gastosPorMedioPago.length === 0) return null;
+    
+    return estadisticas.gastosPorMedioPago.reduce((prev, current) => 
+      prev.cantidad > current.cantidad ? prev : current
+    );
+  };
+
+  const getCategoriaMayorGasto = (): { categoria: string; monto: number } | null => {
+    if (estadisticas.gastosPorCategoria.length === 0) return null;
+    
+    return estadisticas.gastosPorCategoria.reduce((prev, current) => 
+      prev.monto > current.monto ? prev : current
+    );
+  };
+
+  // Funciones helper para actualizar estadísticas
+  const actualizarEstadisticasCategoria = (
+    categorias: Array<{ categoria: string; cantidad: number; monto: number }>,
+    categoria: string,
+    montoDelta: number,
+    cantidadDelta: number
+  ) => {
+    const categoriasMap = new Map(categorias.map(c => [c.categoria, { ...c }]));
+    
+    if (categoriasMap.has(categoria)) {
+      const existing = categoriasMap.get(categoria)!;
+      existing.cantidad += cantidadDelta;
+      existing.monto += montoDelta;
+      
+      if (existing.cantidad <= 0) {
+        categoriasMap.delete(categoria);
+      }
+    } else if (cantidadDelta > 0) {
+      categoriasMap.set(categoria, {
+        categoria,
+        cantidad: cantidadDelta,
+        monto: montoDelta
+      });
+    }
+    
+    return Array.from(categoriasMap.values());
+  };
+
+  const actualizarEstadisticasMedioPago = (
+    mediosPago: Array<{ medioPago: { id: string; nombre: string }; cantidad: number; monto: number }>,
+    medioPago: { id: string; nombre: string },
+    montoDelta: number,
+    cantidadDelta: number
+  ) => {
+    const mediosMap = new Map(mediosPago.map(m => [m.medioPago.id, { ...m }]));
+    
+    if (mediosMap.has(medioPago.id)) {
+      const existing = mediosMap.get(medioPago.id)!;
+      existing.cantidad += cantidadDelta;
+      existing.monto += montoDelta;
+      
+      if (existing.cantidad <= 0) {
+        mediosMap.delete(medioPago.id);
+      }
+    } else if (cantidadDelta > 0) {
+      mediosMap.set(medioPago.id, {
+        medioPago,
+        cantidad: cantidadDelta,
+        monto: montoDelta
+      });
+    }
+    
+    return Array.from(mediosMap.values());
   };
 
   useEffect(() => {
@@ -145,47 +291,16 @@ export function useGastosGenerales(params: UseGastosGeneralesParams = {}) {
     loading,
     error,
     pagination,
+    estadisticas,
     refetch: fetchGastos,
     createGasto,
     updateGasto,
-    deleteGasto
-  };
-}
-
-// Hook para estadísticas de gastos
-export function useGastosEstadisticas() {
-  const [estadisticas, setEstadisticas] = useState<any>(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-
-  const fetchEstadisticas = async () => {
-    try {
-      setLoading(true);
-      setError(null);
-      
-      console.log('📊 Fetching gastos estadísticas...');
-      
-      const data = await api.get('/api/gastos-generales/estadisticas');
-      
-      console.log('✅ Gastos estadísticas fetched successfully');
-      
-      setEstadisticas(data);
-    } catch (err: any) {
-      console.error('❌ Error fetching gastos estadísticas:', err);
-      setError(err.message || 'Error al cargar estadísticas');
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  useEffect(() => {
-    fetchEstadisticas();
-  }, []);
-
-  return {
-    estadisticas,
-    loading,
-    error,
-    refetch: fetchEstadisticas
+    deleteGasto,
+    
+    // NUEVAS FUNCIONES UTILITARIAS
+    getGastosPorMedioPago,
+    getGastosPorCategoria,
+    getMedioMasUsado,
+    getCategoriaMayorGasto
   };
 }

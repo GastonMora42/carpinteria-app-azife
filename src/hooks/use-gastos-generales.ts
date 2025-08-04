@@ -1,4 +1,4 @@
-// src/hooks/use-gastos-generales.ts - ACTUALIZADO CON MEDIOS DE PAGO
+// src/hooks/use-gastos-generales.ts - CORREGIDO
 import { useState, useEffect } from 'react';
 import { api } from '@/lib/utils/http';
 
@@ -37,25 +37,30 @@ interface GastoGeneralFormData {
   periodo?: string;
   numeroFactura?: string;
   proveedor?: string;
-  medioPagoId: string; // NUEVO: Requerido
+  medioPagoId: string;
+}
+
+// CORREGIDO: Interfaces más específicas para estadísticas
+interface EstadisticaCategoria {
+  categoria: string;
+  cantidad: number;
+  monto: number;
+}
+
+interface EstadisticaMedioPago {
+  medioPago: {
+    id: string;
+    nombre: string;
+  };
+  cantidad: number;
+  monto: number;
 }
 
 interface EstadisticasGastosGenerales {
   totalGastos: number;
   montoTotal: number;
-  gastosPorCategoria: Array<{
-    categoria: string;
-    cantidad: number;
-    monto: number;
-  }>;
-  gastosPorMedioPago: Array<{
-    medioPago: {
-      id: string;
-      nombre: string;
-    };
-    cantidad: number;
-    monto: number;
-  }>;
+  gastosPorCategoria: EstadisticaCategoria[];
+  gastosPorMedioPago: EstadisticaMedioPago[];
 }
 
 interface UseGastosGeneralesParams {
@@ -65,7 +70,7 @@ interface UseGastosGeneralesParams {
   fechaDesde?: string;
   fechaHasta?: string;
   periodo?: string;
-  medioPagoId?: string; // NUEVO: Filtro por medio de pago
+  medioPagoId?: string;
 }
 
 export function useGastosGenerales(params: UseGastosGeneralesParams = {}) {
@@ -146,8 +151,18 @@ export function useGastosGenerales(params: UseGastosGeneralesParams = {}) {
       setEstadisticas(prev => ({
         totalGastos: prev.totalGastos + 1,
         montoTotal: prev.montoTotal + gastoData.monto,
-        gastosPorCategoria: actualizarEstadisticasCategoria(prev.gastosPorCategoria, gastoData.categoria, gastoData.monto, 1),
-        gastosPorMedioPago: actualizarEstadisticasMedioPago(prev.gastosPorMedioPago, newGasto.medioPago, gastoData.monto, 1)
+        gastosPorCategoria: actualizarEstadisticasCategoria(
+          prev.gastosPorCategoria, 
+          gastoData.categoria, 
+          gastoData.monto, 
+          1
+        ),
+        gastosPorMedioPago: actualizarEstadisticasMedioPago(
+          prev.gastosPorMedioPago, 
+          newGasto.medioPago, 
+          gastoData.monto, 
+          1
+        )
       }));
       
       return newGasto;
@@ -190,8 +205,18 @@ export function useGastosGenerales(params: UseGastosGeneralesParams = {}) {
         setEstadisticas(prev => ({
           totalGastos: Math.max(0, prev.totalGastos - 1),
           montoTotal: prev.montoTotal - gastoAEliminar.monto,
-          gastosPorCategoria: actualizarEstadisticasCategoria(prev.gastosPorCategoria, gastoAEliminar.categoria, -gastoAEliminar.monto, -1),
-          gastosPorMedioPago: actualizarEstadisticasMedioPago(prev.gastosPorMedioPago, gastoAEliminar.medioPago, -gastoAEliminar.monto, -1)
+          gastosPorCategoria: actualizarEstadisticasCategoria(
+            prev.gastosPorCategoria, 
+            gastoAEliminar.categoria, 
+            -gastoAEliminar.monto, 
+            -1
+          ),
+          gastosPorMedioPago: actualizarEstadisticasMedioPago(
+            prev.gastosPorMedioPago, 
+            gastoAEliminar.medioPago, 
+            -gastoAEliminar.monto, 
+            -1
+          )
         }));
       }
     } catch (err: any) {
@@ -200,7 +225,7 @@ export function useGastosGenerales(params: UseGastosGeneralesParams = {}) {
     }
   };
 
-  // NUEVAS FUNCIONES UTILITARIAS
+  // FUNCIONES UTILITARIAS
 
   const getGastosPorMedioPago = (medioId: string): GastoGeneral[] => {
     return gastos.filter(gasto => gasto.medioPago.id === medioId);
@@ -213,9 +238,15 @@ export function useGastosGenerales(params: UseGastosGeneralesParams = {}) {
   const getMedioMasUsado = (): { medioPago: string; cantidad: number; monto: number } | null => {
     if (estadisticas.gastosPorMedioPago.length === 0) return null;
     
-    return estadisticas.gastosPorMedioPago.reduce((prev, current) => 
+    const medioMasUsado = estadisticas.gastosPorMedioPago.reduce((prev, current) => 
       prev.cantidad > current.cantidad ? prev : current
     );
+    
+    return {
+      medioPago: medioMasUsado.medioPago.nombre,
+      cantidad: medioMasUsado.cantidad,
+      monto: medioMasUsado.monto
+    };
   };
 
   const getCategoriaMayorGasto = (): { categoria: string; monto: number } | null => {
@@ -226,13 +257,13 @@ export function useGastosGenerales(params: UseGastosGeneralesParams = {}) {
     );
   };
 
-  // Funciones helper para actualizar estadísticas
+  // CORREGIDO: Funciones helper para actualizar estadísticas con tipos correctos
   const actualizarEstadisticasCategoria = (
-    categorias: Array<{ categoria: string; cantidad: number; monto: number }>,
+    categorias: EstadisticaCategoria[],
     categoria: string,
     montoDelta: number,
     cantidadDelta: number
-  ) => {
+  ): EstadisticaCategoria[] => {
     const categoriasMap = new Map(categorias.map(c => [c.categoria, { ...c }]));
     
     if (categoriasMap.has(categoria)) {
@@ -255,11 +286,11 @@ export function useGastosGenerales(params: UseGastosGeneralesParams = {}) {
   };
 
   const actualizarEstadisticasMedioPago = (
-    mediosPago: Array<{ medioPago: { id: string; nombre: string }; cantidad: number; monto: number }>,
-    medioPago: { id: string; nombre: string },
+    mediosPago: EstadisticaMedioPago[],
+    medioPago: { id: string; nombre: string; descripcion?: string },
     montoDelta: number,
     cantidadDelta: number
-  ) => {
+  ): EstadisticaMedioPago[] => {
     const mediosMap = new Map(mediosPago.map(m => [m.medioPago.id, { ...m }]));
     
     if (mediosMap.has(medioPago.id)) {
@@ -272,7 +303,10 @@ export function useGastosGenerales(params: UseGastosGeneralesParams = {}) {
       }
     } else if (cantidadDelta > 0) {
       mediosMap.set(medioPago.id, {
-        medioPago,
+        medioPago: {
+          id: medioPago.id,
+          nombre: medioPago.nombre
+        },
         cantidad: cantidadDelta,
         monto: montoDelta
       });
@@ -297,7 +331,7 @@ export function useGastosGenerales(params: UseGastosGeneralesParams = {}) {
     updateGasto,
     deleteGasto,
     
-    // NUEVAS FUNCIONES UTILITARIAS
+    // FUNCIONES UTILITARIAS
     getGastosPorMedioPago,
     getGastosPorCategoria,
     getMedioMasUsado,

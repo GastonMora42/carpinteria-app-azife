@@ -1,4 +1,4 @@
-// src/components/ventas/MediosPagoSelector.tsx - NUEVO COMPONENTE
+// src/components/ventas/MediosPagoSelector.tsx - VERSIÓN CORREGIDA
 'use client';
 
 import { useState, useEffect } from 'react';
@@ -6,7 +6,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Select } from '@/components/ui/select';
 import { Button } from '@/components/ui/button';
-import { useMediosPagoActivos } from '@/hooks/use-medios-pago';
+import { useMediosPago } from '@/hooks/use-medios-pago'; // CORREGIDO: usar el hook principal
 import { CurrencyUtils } from '@/lib/utils/calculations';
 import {
   HiOutlineCreditCard,
@@ -51,8 +51,12 @@ export function MediosPagoSelector({
   disabled = false,
   error
 }: MediosPagoSelectorProps) {
-  const { mediosPago, loading: loadingMedios, error: errorMedios } = useMediosPagoActivos();
+  // CORREGIDO: usar el hook principal y filtrar activos localmente
+  const { mediosPago, loading: loadingMedios, error: errorMedios } = useMediosPago();
   const [showAnticipoDetails, setShowAnticipoDetails] = useState(data.registrarAnticipo);
+
+  // Filtrar solo medios activos
+  const mediosActivos = mediosPago.filter(medio => medio.activo);
 
   // Actualizar la visibilidad de detalles cuando cambia registrarAnticipo
   useEffect(() => {
@@ -93,7 +97,7 @@ export function MediosPagoSelector({
     );
   }
 
-  if (errorMedios || mediosPago.length === 0) {
+  if (errorMedios || mediosActivos.length === 0) {
     return (
       <Card className="border-yellow-200 bg-yellow-50">
         <CardContent className="p-6">
@@ -139,19 +143,20 @@ export function MediosPagoSelector({
           <label className="block text-sm font-medium text-gray-700 mb-2">
             Medio de Pago Preferido
           </label>
-          <Select
+          <select
             value={data.medioPagoId}
             onChange={(e) => handleChange('medioPagoId', e.target.value)}
             disabled={disabled}
+            className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 disabled:bg-gray-100"
           >
             <option value="">Seleccionar medio de pago</option>
-            {mediosPago.map(medio => (
+            {mediosActivos.map(medio => (
               <option key={medio.id} value={medio.id}>
                 {medio.nombre}
                 {medio.descripcion && ` - ${medio.descripcion}`}
               </option>
             ))}
-          </Select>
+          </select>
           <p className="text-xs text-gray-500 mt-1">
             Este será el medio de pago sugerido para futuros cobros de esta venta
           </p>
@@ -214,17 +219,22 @@ export function MediosPagoSelector({
                   )}
                 </div>
 
-                <Select
-                  label="Tipo de Comprobante"
-                  value={data.tipoComprobante}
-                  onChange={(e) => handleChange('tipoComprobante', e.target.value)}
-                  disabled={disabled}
-                >
-                  <option value="">Seleccionar tipo</option>
-                  {TIPOS_COMPROBANTE.map(tipo => (
-                    <option key={tipo} value={tipo}>{tipo}</option>
-                  ))}
-                </Select>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Tipo de Comprobante
+                  </label>
+                  <select
+                    value={data.tipoComprobante}
+                    onChange={(e) => handleChange('tipoComprobante', e.target.value)}
+                    disabled={disabled}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 disabled:bg-gray-100"
+                  >
+                    <option value="">Seleccionar tipo</option>
+                    {TIPOS_COMPROBANTE.map(tipo => (
+                      <option key={tipo} value={tipo}>{tipo}</option>
+                    ))}
+                  </select>
+                </div>
 
                 <Input
                   label="Número de Comprobante"
@@ -243,7 +253,7 @@ export function MediosPagoSelector({
                       +{CurrencyUtils.formatAmount(data.montoAnticipo, moneda)}
                     </div>
                     <div className="text-gray-600">
-                      {mediosPago.find(m => m.id === data.medioPagoId)?.nombre || 'Medio no seleccionado'}
+                      {mediosActivos.find(m => m.id === data.medioPagoId)?.nombre || 'Medio no seleccionado'}
                     </div>
                     <div className="text-gray-500 text-xs">
                       Saldo restante: {CurrencyUtils.formatAmount(totalVenta - data.montoAnticipo, moneda)}

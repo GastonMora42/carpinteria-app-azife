@@ -1,4 +1,4 @@
-// src/hooks/use-medios-pago.ts - HOOK PARA CARGAR MEDIOS DE PAGO REALES
+// src/hooks/use-medios-pago.ts - VERSIÓN CORREGIDA Y SIMPLIFICADA
 import { useState, useEffect } from 'react';
 import { api } from '@/lib/utils/http';
 
@@ -35,8 +35,17 @@ export function useMediosPago(): UseMediosPagoResult {
       
       console.log('✅ Medios de pago fetched successfully:', response.data?.length || 0);
       
-      // El API ya maneja la creación automática si no existen medios
-      setMediosPago(response.data || []);
+      // Verificar si la respuesta es exitosa
+      if (response.success !== false && response.data) {
+        setMediosPago(response.data || []);
+      } else {
+        console.warn('⚠️ API response indicates no success:', response);
+        setMediosPago([]);
+        
+        if (response.message) {
+          setError(response.message);
+        }
+      }
     } catch (err: any) {
       console.error('❌ Error fetching medios de pago:', err);
       setError(err.message || 'Error al cargar medios de pago');
@@ -45,6 +54,18 @@ export function useMediosPago(): UseMediosPagoResult {
         console.log('🔄 Redirecting to login due to auth error');
         window.location.href = '/login';
         return;
+      }
+      
+      // En caso de error, usar medios por defecto para desarrollo
+      if (process.env.NODE_ENV === 'development') {
+        console.log('🛠️ Using default medios for development');
+        setMediosPago([
+          { id: 'efectivo', nombre: 'Efectivo', activo: true, createdAt: '', updatedAt: '' },
+          { id: 'transferencia', nombre: 'Transferencia Bancaria', activo: true, createdAt: '', updatedAt: '' },
+          { id: 'cheque', nombre: 'Cheque', activo: true, createdAt: '', updatedAt: '' },
+          { id: 'tarjeta', nombre: 'Tarjeta', activo: true, createdAt: '', updatedAt: '' }
+        ]);
+        setError(null);
       }
     } finally {
       setLoading(false);
@@ -83,7 +104,7 @@ export function useMediosPago(): UseMediosPagoResult {
 
 // Hook específico para obtener medios de pago activos (para formularios)
 export function useMediosPagoActivos() {
-  const { mediosPago, loading, error } = useMediosPago();
+  const { mediosPago, loading, error, refetch } = useMediosPago();
   
   const mediosActivos = mediosPago.filter(medio => medio.activo);
   
@@ -91,6 +112,7 @@ export function useMediosPagoActivos() {
     mediosPago: mediosActivos,
     loading,
     error,
+    refetch,
     isEmpty: mediosActivos.length === 0
   };
 }
@@ -133,7 +155,6 @@ export function useEstadisticasMediosPago() {
       }, {});
 
       const totalTransacciones = transacciones.data?.length || 0;
-      const totalMonto = Object.values(usoMedios).reduce((acc: number, uso: any) => acc + uso.monto, 0);
 
       const estadisticasUso = Object.entries(usoMedios).map(([medio, data]: [string, any]) => ({
         medioPago: medio,

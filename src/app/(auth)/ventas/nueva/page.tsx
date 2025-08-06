@@ -1,19 +1,15 @@
-// src/app/(auth)/ventas/nueva/page.tsx - VERSIÓN MEJORADA Y COMPLETA
+// src/app/(auth)/ventas/nueva/page.tsx - VERSIÓN EXPANDIDA CON MÁS CAMPOS
 'use client';
 
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { useClients } from '@/hooks/use-clients';
 import { useVentas } from '@/hooks/use-ventas';
-import { useTransacciones } from '@/hooks/use-transacciones';
-import { usePresupuestosDisponibles } from '@/hooks/use-presupuestos-disponibles';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Select } from '@/components/ui/select';
-import { MediosPagoSelector } from '@/components/ventas/MediosPagoSelector';
 import { VentaFormData, ItemVentaFormData, ventaSchema } from '@/lib/validations/venta';
-import { TransaccionFormData } from '@/lib/validations/transaccion';
 import { CurrencyUtils, CalculationUtils, DateUtils } from '@/lib/utils/calculations';
 import {
   HiOutlineArrowLeft,
@@ -34,67 +30,70 @@ import {
   HiOutlineMail,
   HiOutlineLocationMarker,
   HiOutlineCurrencyDollar,
-  HiOutlineClipboardList,
-  HiOutlineCreditCard
+  HiOutlineClipboardList
 } from 'react-icons/hi';
 
-// Interfaz para medios de pago
-interface MedioPagoVentaData {
-  medioPagoId: string;
-  montoAnticipo: number;
-  registrarAnticipo: boolean;
-  tipoComprobante: string;
-  numeroComprobante: string;
-  observaciones: string;
-}
+// Hook personalizado para presupuestos disponibles
+function usePresupuestosDisponibles() {
+  const [presupuestos, setPresupuestos] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [estadisticas, setEstadisticas] = useState<any>(null);
+  const [debug, setDebug] = useState<any>(null);
 
-// Interfaz extendida para campos adicionales
-interface CamposAdicionales {
-  // Información del proyecto
-  numeroProyecto: string;
-  tipoObra: string;
-  tiempoEntregaEstimado: string;
-  estadoInicial: string;
-  
-  // Contactos específicos del proyecto
-  contactoPrincipal: string;
-  telefonoContacto: string;
-  emailContacto: string;
-  
-  // Información de entrega
-  direccionEntrega: string;
-  horariosEntrega: string;
-  instruccionesEspeciales: string;
-  
-  // Información comercial
-  descuentoComercial: number;
-  comision: number;
-  garantia: string;
-  
-  // Documentación
-  requiereFactura: boolean;
-  tipoFactura: string;
-  requierePlanos: boolean;
-  requierePermisos: boolean;
-  
-  // Notas internas
-  notasInternas: string;
-  alertasEspeciales: string;
+  const fetchPresupuestos = async () => {
+    try {
+      setLoading(true);
+      const response = await fetch('/api/presupuestos/disponibles', {
+        credentials: 'include'
+      });
+      
+      if (response.ok) {
+        const data = await response.json();
+        console.log('📋 Presupuestos disponibles response:', data);
+        
+        setPresupuestos(data.data || []);
+        setEstadisticas(data.estadisticas || null);
+        setDebug(data.debug || null);
+        
+        if (data.debug) {
+          console.log('🔍 Debug info:', data.debug);
+        }
+      } else {
+        throw new Error('Error al cargar presupuestos');
+      }
+    } catch (err: any) {
+      setError(err.message);
+      console.error('❌ Error fetching presupuestos:', err);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    fetchPresupuestos();
+  }, []);
+
+  return { presupuestos, loading, error, estadisticas, debug, refetch: fetchPresupuestos };
 }
 
 // Componente para seleccionar presupuesto
 function PresupuestoSelector({ 
   selectedId, 
   onSelect, 
-  onClear 
+  onClear, 
+  presupuestos, 
+  loading,
+  debug 
 }: {
   selectedId: string;
   onSelect: (presupuesto: any) => void;
   onClear: () => void;
+  presupuestos: any[];
+  loading: boolean;
+  debug?: any;
 }) {
   const [showModal, setShowModal] = useState(false);
-  const { presupuestos, loading, error } = usePresupuestosDisponibles();
-  
   const selectedPresupuesto = presupuestos.find(p => p.id === selectedId);
 
   return (
@@ -115,6 +114,11 @@ function PresupuestoSelector({
               Ver Disponibles ({presupuestos.length})
             </Button>
           )}
+          {debug && (
+            <div className="text-xs text-gray-500">
+              Total en sistema: {debug.totalPresupuestosEnSistema}
+            </div>
+          )}
         </div>
       </div>
 
@@ -125,6 +129,18 @@ function PresupuestoSelector({
               <h4 className="font-medium text-blue-900 mb-2 flex items-center">
                 <HiOutlineDocumentText className="h-5 w-5 mr-2" />
                 {selectedPresupuesto.numero}
+                {selectedPresupuesto.vencido && (
+                  <span className="ml-2 inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-red-100 text-red-800">
+                    <HiOutlineExclamation className="h-3 w-3 mr-1" />
+                    Vencido
+                  </span>
+                )}
+                {selectedPresupuesto.urgente && (
+                  <span className="ml-2 inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-yellow-100 text-yellow-800">
+                    <HiOutlineClock className="h-3 w-3 mr-1" />
+                    Urgente
+                  </span>
+                )}
               </h4>
               <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-sm">
                 <div>
@@ -138,9 +154,23 @@ function PresupuestoSelector({
                   </p>
                 </div>
                 <div>
+                  <span className="font-medium text-blue-700">Estado:</span>
+                  <p className="text-blue-900">{selectedPresupuesto.estado}</p>
+                </div>
+              </div>
+              <div className="mt-3 grid grid-cols-1 md:grid-cols-2 gap-4 text-sm">
+                <div>
+                  <span className="font-medium text-blue-700">Descripción:</span>
+                  <p className="text-blue-900 text-sm">{selectedPresupuesto.descripcionObra}</p>
+                </div>
+                <div>
                   <span className="font-medium text-blue-700">Vencimiento:</span>
-                  <p className="text-blue-900">
+                  <p className={`font-medium ${selectedPresupuesto.vencido ? 'text-red-600' : selectedPresupuesto.urgente ? 'text-yellow-600' : 'text-blue-900'}`}>
                     {DateUtils.formatDate(selectedPresupuesto.fechaValidez)}
+                    {selectedPresupuesto.diasRestantes > 0 ? 
+                      ` (${selectedPresupuesto.diasRestantes} días)` : 
+                      ` (vencido hace ${Math.abs(selectedPresupuesto.diasRestantes)} días)`
+                    }
                   </p>
                 </div>
               </div>
@@ -174,6 +204,8 @@ function PresupuestoSelector({
             {presupuestos.map(presupuesto => (
               <option key={presupuesto.id} value={presupuesto.id}>
                 {presupuesto.numero} - {presupuesto.cliente.nombre} - {CurrencyUtils.formatAmount(presupuesto.total, presupuesto.moneda)}
+                {presupuesto.vencido && ' ⚠️ VENCIDO'}
+                {presupuesto.urgente && ' ⏰ URGENTE'}
               </option>
             ))}
           </Select>
@@ -185,7 +217,13 @@ function PresupuestoSelector({
                 <div>
                   <p className="text-sm font-medium text-yellow-800">No hay presupuestos disponibles</p>
                   <p className="text-xs text-yellow-700">
-                    Los presupuestos deben estar aprobados y no convertidos previamente
+                    {debug ? (
+                      <>Total de presupuestos en sistema: {debug.totalPresupuestosEnSistema}. 
+                      Criterios: Estados permitidos ({debug.criteriosBusqueda.estados.join(', ')}), 
+                      sin pedido asociado, no vencidos hace más de 7 días.</>
+                    ) : (
+                      'Los presupuestos deben estar en estado PENDIENTE, ENVIADO o APROBADO y no estar ya convertidos.'
+                    )}
                   </p>
                 </div>
               </div>
@@ -203,7 +241,7 @@ function PresupuestoSelector({
               <div className="px-6 py-4 border-b border-gray-200">
                 <div className="flex items-center justify-between">
                   <h3 className="text-lg font-medium text-gray-900">
-                    Presupuestos Disponibles
+                    Presupuestos Disponibles para Conversión
                   </h3>
                   <Button variant="ghost" size="sm" onClick={() => setShowModal(false)}>
                     <HiOutlineExclamationCircle className="h-4 w-4" />
@@ -216,7 +254,11 @@ function PresupuestoSelector({
                   {presupuestos.map((presupuesto) => (
                     <div
                       key={presupuesto.id}
-                      className="p-4 border rounded-lg cursor-pointer hover:bg-gray-50"
+                      className={`p-4 border rounded-lg cursor-pointer hover:bg-gray-50 ${
+                        presupuesto.vencido ? 'border-red-200 bg-red-50' : 
+                        presupuesto.urgente ? 'border-yellow-200 bg-yellow-50' : 
+                        'border-gray-200'
+                      }`}
                       onClick={() => {
                         onSelect(presupuesto);
                         setShowModal(false);
@@ -224,7 +266,26 @@ function PresupuestoSelector({
                     >
                       <div className="flex justify-between items-start">
                         <div>
-                          <h4 className="font-medium text-gray-900">{presupuesto.numero}</h4>
+                          <div className="flex items-center">
+                            <h4 className="font-medium text-gray-900">{presupuesto.numero}</h4>
+                            <span className={`ml-2 inline-flex items-center px-2 py-0.5 rounded text-xs font-medium ${
+                              presupuesto.estado === 'APROBADO' ? 'bg-green-100 text-green-800' :
+                              presupuesto.estado === 'ENVIADO' ? 'bg-blue-100 text-blue-800' :
+                              'bg-yellow-100 text-yellow-800'
+                            }`}>
+                              {presupuesto.estado}
+                            </span>
+                            {presupuesto.vencido && (
+                              <span className="ml-2 inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-red-100 text-red-800">
+                                Vencido
+                              </span>
+                            )}
+                            {presupuesto.urgente && (
+                              <span className="ml-2 inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-yellow-100 text-yellow-800">
+                                Urgente
+                              </span>
+                            )}
+                          </div>
                           <p className="text-sm text-gray-600">{presupuesto.cliente.nombre}</p>
                           <p className="text-xs text-gray-500 mt-1 max-w-md truncate">{presupuesto.descripcionObra}</p>
                         </div>
@@ -234,6 +295,9 @@ function PresupuestoSelector({
                           </p>
                           <p className="text-xs text-gray-500">
                             Vence: {DateUtils.formatDate(presupuesto.fechaValidez)}
+                          </p>
+                          <p className="text-xs text-gray-500">
+                            {presupuesto._count.items} items
                           </p>
                         </div>
                       </div>
@@ -253,9 +317,9 @@ export default function NuevaVentaPage() {
   const router = useRouter();
   const { clients } = useClients();
   const { createVenta } = useVentas();
-  const { createTransaccion } = useTransacciones();
+  const { presupuestos, loading: presupuestosLoading, estadisticas, debug } = usePresupuestosDisponibles();
 
-  const [formData, setFormData] = useState<VentaFormData & { items: ItemVentaFormData[] }>({
+  const [formData, setFormData] = useState<VentaFormData>({
     clienteId: '',
     presupuestoId: '',
     fechaEntrega: new Date(),
@@ -277,37 +341,38 @@ export default function NuevaVentaPage() {
     }]
   });
 
-  // Campos adicionales
-  const [camposAdicionales, setCamposAdicionales] = useState<CamposAdicionales>({
+  // NUEVOS CAMPOS ADICIONALES
+  const [camposAdicionales, setCamposAdicionales] = useState({
+    // Información del proyecto
     numeroProyecto: '',
     tipoObra: '',
     tiempoEntregaEstimado: '',
     estadoInicial: 'PENDIENTE',
+    
+    // Contactos específicos del proyecto
     contactoPrincipal: '',
     telefonoContacto: '',
     emailContacto: '',
+    
+    // Información de entrega
     direccionEntrega: '',
     horariosEntrega: '',
     instruccionesEspeciales: '',
+    
+    // Información comercial
     descuentoComercial: 0,
     comision: 0,
     garantia: '',
+    
+    // Documentación
     requiereFactura: true,
     tipoFactura: 'B',
     requierePlanos: false,
     requierePermisos: false,
+    
+    // Notas internas
     notasInternas: '',
     alertasEspeciales: ''
-  });
-
-  // Estado para medios de pago
-  const [mediosPagoData, setMediosPagoData] = useState<MedioPagoVentaData>({
-    medioPagoId: '',
-    montoAnticipo: 0,
-    registrarAnticipo: false,
-    tipoComprobante: '',
-    numeroComprobante: '',
-    observaciones: ''
   });
 
   const [errors, setErrors] = useState<Record<string, string>>({});
@@ -329,13 +394,14 @@ export default function NuevaVentaPage() {
         formData.impuestos
       );
 
-  // Función para manejar selección de presupuesto
+  // Función mejorada para manejar selección de presupuesto
   const handlePresupuestoSelect = (presupuesto: any) => {
-    console.log('📋 Seleccionando presupuesto:', presupuesto.numero);
+    console.log('📋 Seleccionando presupuesto completo:', presupuesto);
     
     setSelectedPresupuesto(presupuesto);
     setVentaDirecta(false);
     
+    // Copiar TODOS los campos relevantes del presupuesto
     setFormData(prev => ({
       ...prev,
       presupuestoId: presupuesto.id,
@@ -352,6 +418,7 @@ export default function NuevaVentaPage() {
       items: []
     }));
 
+    // Copiar información adicional del presupuesto si está disponible
     setCamposAdicionales(prev => ({
       ...prev,
       tiempoEntregaEstimado: presupuesto.tiempoEntrega || '',
@@ -361,6 +428,8 @@ export default function NuevaVentaPage() {
       numeroProyecto: `PROY-${presupuesto.numero}`,
       garantia: presupuesto.tiempoEntrega || '30 días'
     }));
+
+    console.log('✅ Presupuesto aplicado a la venta con todos los campos');
   };
 
   // Limpiar selección de presupuesto
@@ -389,6 +458,7 @@ export default function NuevaVentaPage() {
       }]
     }));
 
+    // Limpiar campos adicionales
     setCamposAdicionales({
       numeroProyecto: '',
       tipoObra: '',
@@ -418,24 +488,6 @@ export default function NuevaVentaPage() {
     setErrors({});
 
     try {
-      // Validaciones adicionales para anticipo
-      if (mediosPagoData.registrarAnticipo) {
-        if (!mediosPagoData.medioPagoId) {
-          setErrors({ medioPago: 'Debe seleccionar un medio de pago para registrar anticipo' });
-          return;
-        }
-        
-        if (mediosPagoData.montoAnticipo <= 0) {
-          setErrors({ anticipo: 'El monto del anticipo debe ser mayor a 0' });
-          return;
-        }
-        
-        if (mediosPagoData.montoAnticipo > totales.total) {
-          setErrors({ anticipo: 'El anticipo no puede ser mayor al total de la venta' });
-          return;
-        }
-      }
-
       const dataToSubmit = {
         ...formData,
         items: ventaDirecta ? formData.items : undefined,
@@ -445,26 +497,6 @@ export default function NuevaVentaPage() {
 
       const validatedData = ventaSchema.parse(dataToSubmit);
       const newVenta = await createVenta(validatedData);
-
-      // Si hay anticipo, registrarlo como transacción
-      if (mediosPagoData.registrarAnticipo && mediosPagoData.montoAnticipo > 0) {
-        const anticipoData: TransaccionFormData = {
-          tipo: 'ANTICIPO',
-          concepto: `Anticipo obra ${newVenta.numero}`,
-          descripcion: mediosPagoData.observaciones || `Anticipo registrado al crear la venta`,
-          monto: mediosPagoData.montoAnticipo,
-          moneda: formData.moneda,
-          fecha: new Date(),
-          numeroComprobante: mediosPagoData.numeroComprobante || undefined,
-          tipoComprobante: mediosPagoData.tipoComprobante || undefined,
-          clienteId: formData.clienteId,
-          pedidoId: newVenta.id,
-          medioPagoId: mediosPagoData.medioPagoId
-        };
-
-        await createTransaccion(anticipoData);
-      }
-
       router.push(`/ventas/${newVenta.id}`);
     } catch (error: any) {
       if (error.errors) {
@@ -483,14 +515,14 @@ export default function NuevaVentaPage() {
     }
   };
 
-  const handleChange = (field: keyof (VentaFormData & { items: ItemVentaFormData[] }), value: any) => {
+  const handleChange = (field: keyof VentaFormData, value: any) => {
     setFormData(prev => ({ ...prev, [field]: value }));
     if (errors[field]) {
       setErrors(prev => ({ ...prev, [field]: '' }));
     }
   };
 
-  const handleCampoAdicionalChange = (field: keyof CamposAdicionales, value: any) => {
+  const handleCampoAdicionalChange = (field: string, value: any) => {
     setCamposAdicionales(prev => ({ ...prev, [field]: value }));
   };
 
@@ -540,6 +572,55 @@ export default function NuevaVentaPage() {
         </div>
       </div>
 
+      {/* Estadísticas de presupuestos disponibles */}
+      {estadisticas && (
+        <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+          <Card>
+            <CardContent className="p-4">
+              <div className="flex items-center">
+                <HiOutlineDocumentText className="h-6 w-6 text-blue-600" />
+                <div className="ml-3">
+                  <p className="text-xs font-medium text-gray-500">Disponibles</p>
+                  <p className="text-lg font-bold text-gray-900">{estadisticas.total}</p>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+          
+          <Card>
+            <CardContent className="p-4">
+              <div className="flex items-center">
+                <HiOutlineClock className="h-6 w-6 text-red-600" />
+                <div className="ml-3">
+                  <p className="text-xs font-medium text-gray-500">Urgentes</p>
+                  <p className="text-lg font-bold text-red-600">{estadisticas.urgentes}</p>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardContent className="p-4">
+              <div>
+                <p className="text-xs font-medium text-gray-500">Valor Total</p>
+                <p className="text-sm font-bold text-gray-900">
+                  {CurrencyUtils.formatAmount(estadisticas.montoTotal)}
+                </p>
+              </div>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardContent className="p-4">
+              <div>
+                <p className="text-xs font-medium text-gray-500">Aprobados</p>
+                <p className="text-sm font-bold text-green-600">{estadisticas.porEstado?.aprobados || 0}</p>
+              </div>
+            </CardContent>
+          </Card>
+        </div>
+      )}
+
       <form onSubmit={handleSubmit} className="space-y-6">
         {errors.general && (
           <div className="rounded-md bg-red-50 p-4">
@@ -565,6 +646,9 @@ export default function NuevaVentaPage() {
               selectedId={selectedPresupuesto?.id || ''}
               onSelect={handlePresupuestoSelect}
               onClear={handlePresupuestoClear}
+              presupuestos={presupuestos}
+              loading={presupuestosLoading}
+              debug={debug}
             />
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -594,7 +678,7 @@ export default function NuevaVentaPage() {
           </CardContent>
         </Card>
 
-        {/* Información del Proyecto */}
+        {/* NUEVA SECCIÓN: Información del Proyecto */}
         <Card>
           <CardHeader>
             <CardTitle className="flex items-center">
@@ -657,7 +741,7 @@ export default function NuevaVentaPage() {
           </CardContent>
         </Card>
 
-        {/* Contactos del Proyecto */}
+        {/* NUEVA SECCIÓN: Contactos del Proyecto */}
         <Card>
           <CardHeader>
             <CardTitle className="flex items-center">
@@ -753,7 +837,7 @@ export default function NuevaVentaPage() {
           </CardContent>
         </Card>
 
-        {/* Información Comercial */}
+        {/* NUEVA SECCIÓN: Información Comercial */}
         <Card>
           <CardHeader>
             <CardTitle className="flex items-center">
@@ -826,7 +910,7 @@ export default function NuevaVentaPage() {
           </CardContent>
         </Card>
 
-        {/* Documentación y Permisos */}
+        {/* NUEVA SECCIÓN: Documentación y Permisos */}
         <Card>
           <CardHeader>
             <CardTitle className="flex items-center">
@@ -962,17 +1046,7 @@ export default function NuevaVentaPage() {
           </Card>
         )}
 
-        {/* Selector de medios de pago */}
-        <MediosPagoSelector
-          data={mediosPagoData}
-          onChange={setMediosPagoData}
-          totalVenta={totales.total}
-          moneda={formData.moneda}
-          disabled={isSubmitting}
-          error={errors.medioPago || errors.anticipo}
-        />
-
-        {/* Notas y Observaciones */}
+        {/* NUEVA SECCIÓN: Notas y Observaciones */}
         <Card>
           <CardHeader>
             <CardTitle className="flex items-center">
@@ -1027,7 +1101,7 @@ export default function NuevaVentaPage() {
           <CardHeader>
             <CardTitle className="flex items-center">
               <HiOutlineCalculator className="h-5 w-5 mr-2" />
-              Totales de la Venta
+              Totales y Configuración
             </CardTitle>
           </CardHeader>
           <CardContent>
@@ -1058,7 +1132,7 @@ export default function NuevaVentaPage() {
 
               <div className="bg-white p-6 rounded-lg border border-gray-200">
                 <h4 className="font-medium text-gray-900 mb-4">
-                  Resumen Financiero
+                  Resumen de Totales
                   {selectedPresupuesto && (
                     <span className="text-sm text-blue-600 ml-2">
                       (desde presupuesto {selectedPresupuesto.numero})
@@ -1094,23 +1168,6 @@ export default function NuevaVentaPage() {
                       {CurrencyUtils.formatAmount(totales.total, formData.moneda)}
                     </span>
                   </div>
-                  
-                  {/* Resumen de anticipo */}
-                  {mediosPagoData.registrarAnticipo && mediosPagoData.montoAnticipo > 0 && (
-                    <>
-                      <div className="border-t pt-3 space-y-2">
-                        <div className="flex justify-between text-green-600">
-                          <span>Anticipo a registrar:</span>
-                          <span>+{CurrencyUtils.formatAmount(mediosPagoData.montoAnticipo, formData.moneda)}</span>
-                        </div>
-                        <div className="flex justify-between font-medium text-red-600">
-                          <span>Saldo pendiente:</span>
-                          <span>{CurrencyUtils.formatAmount(totales.total - mediosPagoData.montoAnticipo, formData.moneda)}</span>
-                        </div>
-                      </div>
-                    </>
-                  )}
-                  
                   {camposAdicionales.comision > 0 && (
                     <div className="text-xs text-gray-500 text-right">
                       Comisión ({camposAdicionales.comision}%): {CurrencyUtils.formatAmount((totales.total * camposAdicionales.comision) / 100, formData.moneda)}
@@ -1134,10 +1191,7 @@ export default function NuevaVentaPage() {
                 Convertir a Venta
               </>
             ) : (
-              <>
-                <HiOutlineCheckCircle className="h-4 w-4 mr-2" />
-                {mediosPagoData.registrarAnticipo ? 'Crear Venta y Registrar Anticipo' : 'Crear Venta'}
-              </>
+              'Crear Venta'
             )}
           </Button>
         </div>

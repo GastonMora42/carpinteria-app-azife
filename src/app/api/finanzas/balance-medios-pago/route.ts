@@ -1,15 +1,16 @@
-// src/app/api/finanzas/balance-medios-pago/route.ts - NUEVA API PARA BALANCE GENERAL
+// src/app/api/finanzas/balance-medios-pago/route.ts - VERSIÓN CORREGIDA
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/db/prisma';
 import { verifyCognitoAuth } from '@/lib/auth/cognito-verify';
 import { z } from 'zod';
 
+// CORREGIDO: Schema que maneja valores null de URLSearchParams
 const balanceQuerySchema = z.object({
-  fechaDesde: z.string().optional(),
-  fechaHasta: z.string().optional(),
-  incluirGastos: z.string().optional().transform(val => val === 'true'),
-  incluirIngresos: z.string().optional().transform(val => val !== 'false'), // por defecto true
-  medioId: z.string().optional()
+  fechaDesde: z.string().nullable().optional().transform(val => val || undefined),
+  fechaHasta: z.string().nullable().optional().transform(val => val || undefined),
+  incluirGastos: z.string().nullable().optional().transform(val => val === 'true'),
+  incluirIngresos: z.string().nullable().optional().transform(val => val !== 'false'), // por defecto true
+  medioId: z.string().nullable().optional().transform(val => val || undefined)
 });
 
 // GET - Obtener balance general por medios de pago
@@ -18,17 +19,20 @@ export async function GET(req: NextRequest) {
     const user = await verifyCognitoAuth(req);
     const { searchParams } = new URL(req.url);
     
-    // Validar y parsear parámetros
-    const params = balanceQuerySchema.parse({
+    // CORREGIDO: Crear objeto con valores que pueden ser null
+    const rawParams = {
       fechaDesde: searchParams.get('fechaDesde'),
       fechaHasta: searchParams.get('fechaHasta'),
       incluirGastos: searchParams.get('incluirGastos'),
       incluirIngresos: searchParams.get('incluirIngresos'),
       medioId: searchParams.get('medioId')
-    });
+    };
     
-    console.log('💰 Fetching balance general with params:', params);
-
+    // Validar y parsear parámetros - ahora maneja null correctamente
+    const params = balanceQuerySchema.parse(rawParams);
+    
+    console.log('💰 Fetching balance general de finanzas with params:', params);
+    
     // Construir filtros de fecha
     const dateFilter: any = {};
     if (params.fechaDesde) {
@@ -275,8 +279,13 @@ export async function GET(req: NextRequest) {
     console.error('❌ Error calculating general balance:', error);
     
     if (error instanceof z.ZodError) {
+      console.error('❌ Validation errors:', error.errors);
       return NextResponse.json(
-        { error: 'Parámetros inválidos', details: error.errors },
+        { 
+          error: 'Parámetros inválidos', 
+          details: error.errors,
+          message: 'Error en validación de parámetros de entrada'
+        },
         { status: 400 }
       );
     }
@@ -289,7 +298,10 @@ export async function GET(req: NextRequest) {
     }
     
     return NextResponse.json(
-      { error: 'Error al calcular balance general' },
+      { 
+        error: 'Error al calcular balance general',
+        message: error.message 
+      },
       { status: 500 }
     );
   }
